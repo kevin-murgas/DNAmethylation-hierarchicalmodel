@@ -1,0 +1,153 @@
+---
+title: "50sites"
+author: "Yanlin Ma + Kevin Murgas"
+date: "February 11, 2018"
+output: word_document
+---
+Model 3: $$ y_{i,j,k} = \mu + b_j + I_{tumor} * ( \beta_T + c_j + d_k) + \epsilon_i $$
+$$ b_j \sim N(0, \sigma_P), \ c_j \sim N(0,\sigma_{PT}),\ d_k \sim N(0, \sigma_T), \ \epsilon_i \sim N(0,\sigma_E)  $$
+```{r echo=FALSE, include=FALSE}
+library(rstan)
+library(gtools)
+library(ggplot2)
+library(bayesplot)
+```
+
+```{r echo=FALSE, include=FALSE}
+# Kevin's working directory
+setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
+
+# Yanlin's working directory
+# setwd("D:/DataPlus2017/Data")
+
+# load data
+load("myFA.Rdata")
+
+# Extract single site data
+site <- function (site_no) {
+  # extract CpG site xx to start
+  temp <- FullAnnotation[site_no,]
+  
+  # here we use all patient samples, excluding glands
+  indices <- c(9:13, 15:39,46,47,57,58,72:75)
+  patientLabel <- substr(colnames(temp[indices]),1,1)
+  patientLabel[10:12] <- "K*"
+  sideLabel <- substr(colnames(temp[indices]),2,2)
+  tissueLabel <- sideLabel
+  tissueLabel[tissueLabel %in% c("A","B")] <- "T"   #replace A and B with T
+  tumorIndicator <- 1*(tissueLabel=="T")
+  
+  work <- data.frame(beta=logit(t(temp[indices])), patient = patientLabel, tissue=tissueLabel, side=sideLabel, tInd=tumorIndicator)
+  colnames(work)[1] <- "beta"
+  return(work)
+}
+
+# Using Model PPTT (previously model 3): add intra-tumoral variance
+stanfitPPTT <- function (dataset) {
+  stanDat <- list(pID = as.integer(factor(dataset$patient)),
+                  tInd = dataset$tInd,
+                  N = nrow(dataset),
+                  P = nlevels(dataset$patient),
+                  y = dataset[,1])
+  stanFitPPTT <-
+    stan(
+      #file = "model_PPTT.stan",
+      fit = emptyFit,
+      warmup = 1000,
+      iter = 4000,
+      chains = 4,
+      thin = 1,
+      data = stanDat,
+      control = list(adapt_delta = 0.999),
+      refresh = 0
+    )
+  return(stanFitPPTT=stanFitPPTT)
+}
+
+# Plot raw data and fits
+fitplot <- function(data,stanFit) {
+  # plot beta and fits at this site for all patients, using mean estimates for b and c coefficients
+  p1 <- ggplot() + geom_point(data = data, aes(x=tInd, y=beta, colour=patient))
+  pats <- as.integer(factor(data$patient))
+  nsamp <- length(pats)
+  npats <- max(pats)
+  sumTemp <- summary(stanFit)$summary
+  mu <- sumTemp[dim(sumTemp)[1]-5,1]
+  betaT <- sumTemp[dim(sumTemp)[1]-6,1]
+  sampcoefs <- data.frame(pat = pats, b = sumTemp[pats], c = sumTemp[pats+npats], d = sumTemp[1:nsamp+2*npats])
+  patcoefs <- data.frame(pat = 1:npats, b = sumTemp[1:npats], c = sumTemp[1:npats+npats])
+  rm(sumTemp)
+  # add individual sample estimates
+  sampdf <- data.frame(pat = rep(factor(data$patient),2), patg = rep(factor(1:nsamp),2), tInd = c(rep(0,nsamp),rep(1,nsamp)), est = c(sampcoefs$b+mu, (sampcoefs$b+sampcoefs$c++sampcoefs$d+mu+betaT)))
+  p1 <- p1 + geom_line(data=sampdf, aes(x=tInd, y=est, colour=pat, group=patg), linetype="dashed", alpha=0.5)
+  # add patient mean estimates
+  patdf <- data.frame(pat = rep(levels(data$patient),2), tInd = c(rep(0,npats),rep(1,npats)), est = c(patcoefs$b+mu, patcoefs$b+patcoefs$c+mu+betaT))
+  p1 <- p1 + geom_line(data=patdf, aes(x=tInd, y=est, colour=pat))
+  # add overall mean estimates
+  meandf <- data.frame(tInd = c(0,1), est = c(mu,mu+betaT))
+  p1 <- p1 + geom_point(data=meandf, aes(x=tInd, y=est), size=3, alpha=0.7) + geom_line(data=meandf, aes(x=tInd, y=est), size=2, alpha=0.5)
+  
+  return(p1)
+}
+
+# Plot posterior distribution
+postplot <- function(stanFit) {
+  p2 <- mcmc_areas(
+    as.array(stanFit), 
+    pars = c("sigma_p", "sigma_pt","sigma_t","sigma_e"),
+    prob = 0.8, # 80% intervals
+    prob_outer = 0.95, 
+    point_est = "median"
+  )
+  return(p2)
+}
+
+## CODE
+# Randomly choose 50 sites
+set.seed(50)
+siteInds <- sample(1:866836,50)
+nsites <- length(siteInds)
+
+# check for model_PPTT.rds, must add to prevent crash
+checkFile <- "model_PPTT.rds"
+if (file.exists(checkFile)) {
+  file.remove(checkFile)
+  print("caught one!") 
+}
+
+# create empty fit to use same model compilation throughout
+data1<-site(1)
+stanDat1 <- list(
+  pID = as.integer(factor(data1$patient)),
+  tInd = data1$tInd,
+  N = nrow(data1),
+  P = nlevels(data1$patient),
+  y = data1[, 1]
+)
+emptyFit <- stan(file="model_PPTT.stan", data = stanDat1, chains = 0)
+
+```
+
+```{r echo=FALSE,include=TRUE,error=FALSE,message=FALSE,warning=FALSE,results='hide',fig.keep='all',fig.show='hold',fig.height=3.7,fig.width=5}
+# fig.align='center'
+ptm <- proc.time()
+for (i in siteInds) {
+  #print(paste("Site ",i,sep=''))
+  data <- site(i)
+  stanFit <- stanfitPPTT(data)
+  p1 <- fitplot(data, stanFit) + ggtitle(paste("Site", i, ": Beta Fits by Patient"))
+  p2 <- postplot(stanFit) + ggtitle(paste("Site", i, ": Sigma Posteriors"))
+  print(p1)
+  print(p2)
+}
+mtp <- proc.time() - ptm
+
+```
+
+
+```{r echo=FALSE,include=TRUE}
+
+print(mtp)
+print(paste("Completed run on sites:", paste(siteInds, collapse=" ")))
+
+```
