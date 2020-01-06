@@ -33,17 +33,17 @@ parameters {
 
 model {
   //priors //uniform(0,100); gamma(10,1);
+  sigma_t ~ gamma(4,8);
+  sigma_e ~ gamma(4,8);
   sigma_p ~ gamma(4,8);
   sigma_pt ~ gamma(4,8);
-  sigma_t ~ gamma(4,8);
-  sigma_e ~ uniform(0,100);
   
   b_pat ~ normal(0,sigma_p);
   c_patT ~ normal(0,sigma_pt);
   d_T ~ normal(0,sigma_t);
   
   mu ~ normal(0,100000);
-  betaT ~ normal(0,1.24242);
+  betaT ~ normal(0,100000);
   
   //posteriors
   for (n in 1:N){

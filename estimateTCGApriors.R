@@ -129,7 +129,7 @@ calcSigmaPT <- function (siteBeta) {
   }
   betaT <- mean(normBeta)
   c <- normBeta - betaT
-  sigmaPT <- var(c)
+  sigmaPT <- var(c) # technically shouldn't need to subtract betaT, variance should be the same
   return(c(betaT,sigmaPT))
 }
 
