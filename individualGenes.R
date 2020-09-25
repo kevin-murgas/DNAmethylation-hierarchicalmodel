@@ -16,21 +16,22 @@ setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
 setwd("D:/DataPlus2017/Data")
 
 # load annotation, Stan results, and gene scores
-load("myFA.Rdata")
-load("StanCfullResults.Rdata")
-load("StanCfullResults2.Rdata")
-load("StanCfullResults3.Rdata")
-load("ScoresFull.Rdata")
+load("myFA_bulkonly.Rdata")
+#load("StanCfullResults.Rdata")
+#load("StanCfullResults2.Rdata")
+#load("StanCfullResults3.Rdata")
+#load("ScoresFull.Rdata")
+load("FullResultsTCGA.Rdata")
 
 
 ### INITIALIZE
 
 # # create list of unique gene names and gene regions at each site
-# geneNames <- list(866836)
-# geneRegions <- list(866836)
-# for (i in 1:866836) {
-#   if (!(i %% 86684)) {
-#     print(paste(i/8668.4,"% complete"))
+# geneNames <- list(866091)
+# geneRegions <- list(866091)
+# for (i in 1:866091) {
+#   if (!(i %% 86609)) {
+#     print(paste(i/8660.9,"% complete"))
 #   }
 #   geneNames[[i]] <- unique(unlist(strsplit(FullAnnotation$UCSC_RefGene_Name[i],split=";")))
 #   worklist <- unique(unlist(strsplit(FullAnnotation$UCSC_RefGene_Group[i],split=";")))
@@ -44,8 +45,10 @@ load("ScoresFull.Rdata")
 load("GeneInfo.Rdata")
 
 # make vector of unique genes and regions
-uniqueGenes <- unique(unlist(geneNames))
-regionTypes <- unique(unlist(geneRegions))
+uniqueGenes <- unique(unlist(siteGenes))
+regionTypes <- unique(unlist(siteRegions))
+#uniqueGenes <- unique(unlist(geneNames))
+#regionTypes <- unique(unlist(geneRegions))
 
 # make dataframes for median and mean values of each parameter
 dfMedians <- cbind.data.frame(mu_Cfull$p50, betaT_Cfull$p50, sigmaE_Cfull$p50, sigmaP_Cfull$p50, sigmaPT_Cfull$p50, sigmaT_Cfull$p50)

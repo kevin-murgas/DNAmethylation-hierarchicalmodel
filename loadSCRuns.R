@@ -10,24 +10,27 @@ library(reshape2)
 ### LOADING FOR STAN MODEL RESULTS
 
 # Set working directory to normal data wd then folder ResultsC
-setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data/NewResultsC")
+setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data/ResultsTCGA_relaxgamma3")
 
-betaT_Cfull3 <-
+mu_full <-
   data.frame(
-    mean = numeric(866836),
-    p2.5 = numeric(866836),
-    p25 = numeric(866836),
-    p50 = numeric(866836),
-    p75 = numeric(866836),
-    p97.5 = numeric(866836)
+    mean = numeric(866091),
+    sem = numeric(866091),
+    p50 = numeric(866091),
+    n_eff = numeric(866091),
+    Rhat = numeric(866091)
   )
 
-mu_Cfull3 <- betaT_Cfull3
-sigmaE_Cfull3 <- betaT_Cfull3
-sigmaP_Cfull3 <- betaT_Cfull3
-sigmaPT_Cfull3 <- betaT_Cfull3
-sigmaT_Cfull3 <- betaT_Cfull3
-PTprob3 <- numeric(866836)
+betaT_full <- mu_full
+sigmaP_full <- mu_full
+sigmaPT_full <- mu_full
+sigmaT_full <- mu_full
+sigmaE_full <- mu_full
+lp_full <- mu_full
+
+CpGscore_full <- data.frame(prob = numeric(866091),
+                         mean = numeric(866091),
+                         median = numeric(866091))
 
 nsites <- 10000
 filesPresent <- (1:87)
@@ -38,19 +41,20 @@ for (i in filesPresent) {
   load(fileNames[fileNames == paste("StanCParResults_",i,".Rdata", sep="")])
   inds <- (1:nsites) + (i - 1) * nsites
   if (i==87) {
-    inds <- inds[1:6836]
+    inds <- inds[1:6091]
   }
   allInds <- append(allInds, inds)
-  betaT_Cfull3[inds, ] <- betaT_C
-  mu_Cfull3[inds, ] <- mu_C
-  sigmaE_Cfull3[inds, ] <- sigmaE_C
-  sigmaP_Cfull3[inds, ] <- sigmaP_C
-  sigmaPT_Cfull3[inds, ] <- sigmaPT_C
-  sigmaT_Cfull3[inds, ] <- sigmaT_C
-  PTprob3[inds] <- PTprob
+  mu_full[inds, ] <- mu_C
+  betaT_full[inds, ] <- betaT_C
+  sigmaP_full[inds, ] <- sigmaP_C
+  sigmaPT_full[inds, ] <- sigmaPT_C
+  sigmaT_full[inds, ] <- sigmaT_C
+  sigmaE_full[inds, ] <- sigmaE_C
+  lp_full[inds, ] <- lp_C
+  CpGscore_full[inds, ] <- CpGscore
 }
-save(mu_Cfull3, betaT_Cfull3, sigmaP_Cfull3, sigmaT_Cfull3,
-     sigmaPT_Cfull3, sigmaE_Cfull3, PTprob3, file = "StanCfullResults3.Rdata")
+save(mu_full, betaT_full, sigmaP_full, sigmaT_full, sigmaPT_full, sigmaE_full,
+      lp_full, CpGscore_full, file = "FullResultsTCGA_relaxgamma3.Rdata")
 
 
 ### LOADING FOR GENE SCORING RESULTS
@@ -99,11 +103,18 @@ write.csv(geneScores5, file = "GeneScores5Methods.csv")
 ### compare modelC runs 1 and 2
 # Kevin's working directory
 setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
-load("StanCfullResults.Rdata")
-load("StanCfullResults2.Rdata")
+#load("StanCfullResults.Rdata")
+#load("StanCfullResults2.Rdata")
+load("FullResultsTCGA_invgamma.Rdata")
+mu_Cfull<-mu_full
+betaT_Cfull<-betaT_full
+sigmaE_Cfull<-sigmaE_full
+sigmaP_Cfull<-sigmaP_full
+sigmaPT_Cfull<-sigmaPT_full
+sigmaT_Cfull<-sigmaT_full
 
 mu1 <- mu_Cfull$p50
-mu2 <- mu_Cfull2$p50
+mu2 <- mu_full$p50
 cor(mu1,mu2)
 mudiffs <- mu1-mu2
 muchange <- mudiffs/mu1
@@ -113,7 +124,7 @@ hist(mudiffs,100)
 hist(muchange,100)
 
 betaT1 <- betaT_Cfull$p50
-betaT2 <- betaT_Cfull2$p50
+betaT2 <- betaT_full$p50
 cor(betaT1,betaT2)
 betaTdiffs <- betaT1-betaT2
 betaTchange <- betaTdiffs/betaT1
@@ -123,7 +134,7 @@ hist(betaTdiffs,100)
 hist(betaTchange,100)
 
 sigmaE1 <- sigmaE_Cfull$p50
-sigmaE2 <- sigmaE_Cfull2$p50
+sigmaE2 <- sigmaE_full$p50
 cor(sigmaE1,sigmaE2)
 sigmaEdiffs <- sigmaE1-sigmaE2
 sigmaEchange <- sigmaEdiffs/sigmaE1
@@ -133,7 +144,7 @@ hist(sigmaEdiffs,100)
 hist(sigmaEchange,100)
 
 sigmaP1 <- sigmaP_Cfull$p50
-sigmaP2 <- sigmaP_Cfull2$p50
+sigmaP2 <- sigmaP_full$p50
 cor(sigmaP1,sigmaP2)
 sigmaPdiffs <- sigmaP1-sigmaP2
 sigmaPchange <- sigmaPdiffs/sigmaP1
@@ -143,7 +154,7 @@ hist(sigmaPdiffs,100)
 hist(sigmaPchange,100)
 
 sigmaPT1 <- sigmaPT_Cfull$p50
-sigmaPT2 <- sigmaPT_Cfull2$p50
+sigmaPT2 <- sigmaPT_full$p50
 cor(sigmaPT1,sigmaPT2)
 sigmaPTdiffs <- sigmaPT1-sigmaPT2
 sigmaPTchange <- sigmaPTdiffs/sigmaPT1
@@ -153,7 +164,7 @@ hist(sigmaPTdiffs,100)
 hist(sigmaPTchange,100)
 
 sigmaT1 <- sigmaT_Cfull$p50
-sigmaT2 <- sigmaT_Cfull2$p50
+sigmaT2 <- sigmaT_full$p50
 cor(sigmaT1,sigmaT2)
 sigmaTdiffs <- sigmaT1-sigmaT2
 sigmaTchange <- sigmaTdiffs/sigmaT1

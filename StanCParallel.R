@@ -7,10 +7,11 @@ library(rstan)
 library(gtools)
 
 rstan_options(auto_write = FALSE)
-print(paste("Cores: ", detectCores()))
+numCPUs = as.integer(Sys.getenv('SLURM_CPUS_PER_TASK'))
+print(paste("Cores: ", numCPUs))
 
 # load data
-load("myFA.Rdata")
+load("myFA_bulkonly.Rdata")
 
 args <- commandArgs(trailingOnly = TRUE)
 print(args)
@@ -23,7 +24,7 @@ writeLines(c(""), log.file)
 # Choose 10000 sites by N, and select chunk within FullAnnotation, then remove FA
 siteInds <- (1:10000) + (N - 1) * 10000
 if (N > 86) {
-  siteInds <- siteInds[1:6836]
+  siteInds <- siteInds[1:6091]
 }
 nsites <- length(siteInds)
 
@@ -31,9 +32,6 @@ print(paste("Making chunk of nsites =", nsites))
 chunk <- FullAnnotation[siteInds,]
 rm(FullAnnotation)
 gc()
-
-# must add to prevent crash
-checkFile <- "model3.rds"
 
 
 ### FXNS ###
@@ -45,13 +43,12 @@ site <- function (ind) {
   temp <- chunk[ind,]
   
   # here we use all patient samples, excluding glands
-  indices <- c(9:13, 15:39, 46, 47, 57, 58, 72:75)
+  indices <-  c(10:57) # if using bulk only data file
   patientLabel <- substr(colnames(temp[indices]), 1, 1)
   patientLabel[10:12] <- "K*"
   sideLabel <- substr(colnames(temp[indices]), 2, 2)
   tissueLabel <- sideLabel
-  tissueLabel[tissueLabel %in% c("A", "B")] <-
-    "T"   #replace A and B with T
+  tissueLabel[!(sideLabel %in% c("N"))] <- "T"   #replace A/B/D/M with T
   tumorIndicator <- 1 * (tissueLabel == "T")
   
   work <-
@@ -66,8 +63,8 @@ site <- function (ind) {
   return(work)
 }
 
-# Function to build stan model for each site
-stanfit3 <- function (dataset) {
+# Using Model with TCGA priors (previously model 3)
+stanfit_model <- function (dataset) {
   stanDat <- list(
     pID = as.integer(factor(dataset$patient)),
     tInd = dataset$tInd,
@@ -75,23 +72,18 @@ stanfit3 <- function (dataset) {
     P = nlevels(dataset$patient),
     y = dataset[, 1]
   )
-  
-  # Using Model 3: add intra-tumoral variances
-  # have to check for model3.rds - crashes Stan
-  if (file.exists(checkFile)) {
-    file.remove(checkFile)
-    print("caught one!") 
-  }
-  stanFit3 <-
+  stanFit <- 
     stan(
-      #file = "model3.stan",
       fit = emptyFit,
+      warmup = 200,
+      iter = 2000,
+      chains = 4,
       data = stanDat,
       control = list(adapt_delta = 0.999),
-      refresh = 0
+      refresh = 0,
+      seed=123
     )
-  
-  return(stanFit3 = stanFit3)
+  return(stanFit=stanFit)
 }
 
 # Function for combining parallel runs of each fixef/sigma
@@ -104,68 +96,23 @@ comb <- function(x, ...) {
 
 print("Generating data.frames")
 
-betaT_C <-
-  data.frame(
-    mean = numeric(nsites),
-    p2.5 = numeric(nsites),
-    p25 = numeric(nsites),
-    p50 = numeric(nsites),
-    p75 = numeric(nsites),
-    p97.5 = numeric(nsites)
-  )
-
 mu_C <-
   data.frame(
     mean = numeric(nsites),
-    p2.5 = numeric(nsites),
-    p25 = numeric(nsites),
+    sem = numeric(nsites),
     p50 = numeric(nsites),
-    p75 = numeric(nsites),
-    p97.5 = numeric(nsites)
+    n_eff = numeric(nsites),
+    Rhat = numeric(nsites)
   )
+betaT_C <- mu_C
+sigmaP_C <- mu_C
+sigmaPT_C <- mu_C
+sigmaT_C <- mu_C
+sigmaE_C <- mu_C
+lp_C <- mu_C
 
-sigmaE_C <-
-  data.frame(
-    mean = numeric(nsites),
-    p2.5 = numeric(nsites),
-    p25 = numeric(nsites),
-    p50 = numeric(nsites),
-    p75 = numeric(nsites),
-    p97.5 = numeric(nsites)
-  )
-
-sigmaP_C <-
-  data.frame(
-    mean = numeric(nsites),
-    p2.5 = numeric(nsites),
-    p25 = numeric(nsites),
-    p50 = numeric(nsites),
-    p75 = numeric(nsites),
-    p97.5 = numeric(nsites)
-  )
-
-sigmaT_C <-
-  data.frame(
-    mean = numeric(nsites),
-    p2.5 = numeric(nsites),
-    p25 = numeric(nsites),
-    p50 = numeric(nsites),
-    p75 = numeric(nsites),
-    p97.5 = numeric(nsites)
-  )
-
-sigmaPT_C <-
-  data.frame(
-    mean = numeric(nsites),
-    p2.5 = numeric(nsites),
-    p25 = numeric(nsites),
-    p50 = numeric(nsites),
-    p75 = numeric(nsites),
-    p97.5 = numeric(nsites)
-  )
-
-# inds for extracting data
-mInd <- c(1, 4:8)
+# inds for extracting data (mean, sem, median, n_eff, Rhat)
+mInd <- c(1, 2, 6, 9, 10)
 
 # create empty fit to use same model compilation throughout
 data1<-site(1)
@@ -176,64 +123,56 @@ stanDat1 <- list(
   P = nlevels(data1$patient),
   y = data1[, 1]
 )
-emptyFit <- stan(file="model3.stan", data = stanDat1, chains = 0)
+emptyFit <- stan(file="model_TCGApriors_nosigmae.stan", data = stanDat1, chains = 0)
 
 # run in parallel via doParallel
-cl <- makeCluster(detectCores())
+cl <- makeCluster(numCPUs)
 registerDoParallel(cl)
 print(paste("Cores registered:",getDoParWorkers()))
 print(paste("Backend type:",getDoParName()))
 print("Starting foreach loop")
 ptm <- proc.time()
 parData <- foreach(i = iter(1:nsites), .combine = 'comb', .multicombine = TRUE, .packages=c("gtools","rstan")) %dopar% {
-  sink(log.file, append=TRUE)
-  print(paste("site:", i,"/",nsites))
-  sink()
-
+  if (i %% 1000 == 1) {
+    sink(log.file, append = TRUE)
+    print(paste("site:", i, "/", nsites))
+    sink()
+  }
+  
   data <- site(i)
-  stanFit <- stanfit3(data)
-  fitSumm <- summary(stanFit)$summary[71:76, mInd]
-  rm(data,stanFit)
+  stanFit <- stanfit_model(data)
+  
+  # take summary values for first 6 params (mu, betaT, sigmas x4) and last param (lp__)
+  fitSumm <- summary(stanFit)$summary[c(1:6,97), mInd]
+  
+  # compute posterior log-ratio: log(sigmaP/sigmaT), take integral>0, mean, median
+  posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_t"))
+  logPTratio <- log(posterior[,1]/posterior[,2])
+  prob1 <- c(mean(logPTratio > 0), mean(logPTratio), median(logPTratio))
+  fitSumm <- rbind(fitSumm,prob1)
+  
+  rm(data, stanFit, posterior, logPTratio, prob1)
   gc()
   
-  split(fitSumm, row(fitSumm))
+  split(fitSumm, rownames(fitSumm))
 }
 proc.time() - ptm
 stopCluster(cl)
+sink(log.file, append=TRUE)
+print("All sites complete, saving data.")
+sink()
 
-betaT_C[,] <- parData$'1'
-mu_C[,] <- parData$'2'
-sigmaE_C[,] <- parData$'3'
-sigmaP_C[,] <- parData$'4'
-sigmaPT_C[,] <- parData$'5'
-sigmaT_C[,] <- parData$'6'
+mu_C[,] <- parData$mu
+betaT_C[,] <- parData$betaT
+sigmaP_C[,] <- parData$sigma_p
+sigmaPT_C[,] <- parData$sigma_pt
+sigmaT_C[,] <- parData$sigma_t
+sigmaE_C[,] <- parData$sigma_e
+lp_C[,] <- parData$lp__
+prob1 <- parData$prob1[,1:3]
 rm(parData)
 gc()
 
-# # parallel via Rstan
-# options(mc.cores = detectCores())
-# ptm <- proc.time()
-# for (i in (1:nsites)) {
-#   sink(log.file, append=TRUE)
-#   print(paste("site:", i))
-#   sink()
-#   
-#   data <- site(siteInds[i])
-#   stanFit <- stanfit3(data)
-#   fitSumm <- summary(stanFit)$summary[71:76,mInd]
-#   rm(data,stanFit)
-#   gc()
-#   
-#   betaT_C[i,] <- fitSumm[1,]
-#   mu_C[i,] <- fitSumm[2,]
-#   sigmaE_C[i,] <- fitSumm[3,]
-#   sigmaP_C[i,] <- fitSumm[4,]
-#   sigmaPT_C[i,] <- fitSumm[5,]
-#   sigmaT_C[i,] <- fitSumm[6,]
-# }
-# proc.time() - ptm
-
 print(paste("Completed run, now saving"))
 # save data
-save(mu_C, betaT_C, sigmaP_C, sigmaT_C,
-     sigmaPT_C, sigmaE_C, file = out.file)
+save(mu_C, betaT_C, sigmaP_C, sigmaPT_C, sigmaT_C, sigmaE_C, lp_C, prob1, file = out.file)
