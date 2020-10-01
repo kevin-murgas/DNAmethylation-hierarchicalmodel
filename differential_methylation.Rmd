@@ -1,0 +1,155 @@
+---
+title: "DNAm Hierarchical Model - Fixed Effects Differential Methylation"
+author: "Kevin Murgas"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    fig_caption: true
+    number_section: true
+    toc: true
+---
+
+\newpage
+\section{Differential Methylation}
+Differential methylation is typically defined using a basic linear model over the data points between normal and tumor samples.
+$$ M_i = \mu + \Delta M*\text{tInd}(i) $$
+Where tInd is a binary indicator for tumor samples.
+\newline This linear fit captures the normal mean (intercept) and shift in methylation in tumors (slope). The slope ($\Delta M$) is used to define differentially methylated regions by first z-score normalizing and then determining statistical significance using a permutation based false discovery rate (FDR)
+$$ z = \text{mean}(\Delta M) / \text{s.d.}(\Delta M) $$
+\newline I am currently a bit unclear on the FDR step. Irizarry et al 2009 reference : Efron B, Tibshirani R, Storey JD, Tusher V. Empirical Bayes analysis of a microarray experiment. Journal of the American statistical association. 2001 Dec 1;96(456):1151-60.
+\newline Z-scores can convert to p-values, and Benjamini-Hochberg step-up can account for multiple hypothesis correction. The permutation could be from shuffling the normal/tumor labels on 1000 draws.
+
+\newline The minfi dmpFinder approach uses a linear fit (limma package), and computes a t-statistic for the slope by the following formula:
+$$ t = (\Delta M) / (\sigma_{\Delta M} * \sigma_{resid}) $$
+Which is then converted to a p-value using the t-distribution with df= # samples - 2. The p-value is then corrected by Storey et al. 2003 Bayesian q-value method, which is similar to Benjamini-Hochberg linear step-up FDR procedure but divides by a factor of an estimated prior.
+
+\section{Model Description: Fixed Effects}
+\subsection{Model equation}
+Let i=sample, j=patient
+$$ y_i = \mu + a_j +  \text{tInd}(i)*(\beta_T + b_j + c_i) $$
+$$ a_j \sim N(0,\sigma_P) , b_j \sim N(0,\sigma_{PT}) , c_i \sim N(0,\sigma_T) $$
+\subsection{Differential Methylation using betaT}
+Effects $\mu$ and $\beta_T$ describe the normal mean methylation and tumor shift in methylation, respectively. Therefore, differentially methylated CpG sites will have significant betaT values. A similar procedure is used as the $\Delta M$ , using a z-score normalization, and permutation based FDR.
+\newline This provides a way to identify CpG sites with significant differential methylation. These sites can then be directly compared to C-DMRs of Irizarry 2009 (provided as regions, i.e. base ranges on a given chromosome), or go up to identify genes with either any d.m. CpG sites or a certain fraction. Genes can also be compared to Irizarry C-DMRs (each region has a single gene listed)
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(gtools)
+
+# set working directory
+setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
+library(here)
+
+select <- dplyr::select
+rename <- dplyr::rename
+filter <- dplyr::filter
+slice <- dplyr::slice
+
+set.seed(1234)
+```
+
+\newpage
+\section{Compute DM - raw beta values}
+```{r dm_beta, echo=FALSE}
+# Load raw methylation data
+load(here("myFA_bulkonly.Rdata"))
+
+# extract beta values from data
+all_beta <- FullAnnotation[,10:57]
+rownames(all_beta)<-FullAnnotation$IlmnID
+tissueLabel <- substr(colnames(all_beta), 2, 2)
+tissueLabel[!(tissueLabel %in% "N")] <- "T"
+
+# convert to M values, tInd
+all_M <- logit(all_beta)
+tInd <- tissueLabel=="T"
+
+nsamp = dim(all_beta)[2]
+ymean = rowSums(all_M)/nsamp
+SStot = rowSums( (all_M - ymean)^2 )
+
+# same procedure as minfi dmpFinder
+# use limma to compute linear fits
+library(limma)
+design <- cbind(muM=1,deltaM=tInd)
+fit <- lmFit(all_M, design)
+tstat.ord <- fit$coef[,2] / fit$stdev.unscaled[,2] / fit$sigma
+pval <- 2*pt(abs(tstat.ord), fit$df.residual, lower.tail=FALSE)
+qvalBH <- p.adjust(pval, method="BH")
+
+# qvalue approach used by minfi dmpFinder (from Storey 2003)
+library(siggenes)
+p0 <- pi0.est(pval[!is.na(pval)])$p0
+qvalS <- qvalue.cal(pval, p0)
+
+fit_stats <- cbind(as.data.frame(fit), tstat.ord, pval, qvalBH, p0, qvalS)
+
+## using emprical Bayes stats (not necessary unless <10 samples)
+#stats <- as.data.frame(eBayes(fit)) %>%
+#  select(-c(stdev.unscaled.muM, stdev.unscaled.deltaM)) %>% #df.residual, df.total 
+#  mutate(t.ord.muM=tstat.ord[,1], t.ord.deltaM=tstat.ord[,2]) %>%
+#  mutate(qval = p.adjust(pt.ord.deltaM, method="BH"))
+## for some reason the qval is off from dmpfinder qval by a constant factor 3.496509
+
+## minfi method
+# library(minfi)
+# dmpsM <- dmpFinder(as.matrix(all_M), tInd, type="continuous")
+# dmpsM_new <- dmpsM[ order(row.names(dmpsM)), ]
+
+library(gt)
+data.frame(sumBH = sum(qvalBH<0.05), sumS = sum(qvalS<0.05)) %>%
+  rename('# Signif. sites (Benjamini-Hochberg)' = sumBH, '# Signif. sites (Storey)' = sumS)
+```
+
+\section{Compute DM - Stan fit betaT}
+Use a similar metric, with a t-score based on the median estimate and SEM of posterior. Unclear on how to run significance bootstrapping, but should be find with using the t-test p-value and FDR correction with B-H step up. 
+\newline Second approach would be use a z-score based on all of the estimates.
+```{r dm_stan, echo=FALSE}
+# load Stan fits
+stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
+load(here(stanFile))
+
+nsamp = dim(all_beta)[2]
+sd_all = sd(betaT_full$p50)
+betaT_stats <- betaT_full %>% mutate(tstat = p50/(sem*sqrt(n_eff))) %>%
+#  mutate(SSreg = sem*n_eff) %>%
+#  mutate(SSres = SStot - SSreg) %>%
+  mutate(pval = 2*pt(abs(tstat), nsamp-2, lower.tail=FALSE)) %>%
+  mutate(qvalBH = p.adjust(pval, method="BH")) %>%
+  mutate(zscore = p50/sd_all) %>%
+  mutate(pz = 2*pnorm(abs(zscore),lower.tail=FALSE)) %>%
+  mutate(qvalBHz = p.adjust(pz, method="BH"))
+
+
+
+```
+
+\section{Compare to Irizarry et al 2009}
+Irizarry use a similar differential methylation profiling approach in colorectal cancers (different methylation assay), and identify numerous cancer-specific diff. meth. regions (C-DMRs). Compare their list, which reports ranges of bases with single gene labels, to our differential methylation findings.
+\newline Doi et al. 2009 (same group as Irizarry 2009), perform a similar analysis to determine C-DMRs in colorectal cancer. These C-DMRs are reported in the "DMR" column of the Illumina EPIC array manifest.
+\newline Summarize % of overlap in each case, using specific bases of CpG sites or using gene names.
+```{r compare_irizarry, echo=FALSE}
+DMR_data = fit_stats$qvalBH <0.05
+DMR_beta = betaT_stats$qvalBH < 0.05
+CDMR_epic = (FullAnnotation$DMR == "CDMR") #| (FullAnnotation$DMR == "DMR")
+
+DMR_list = cbind(DMR_data, CDMR_epic)
+crosstab <- xtabs(~DMR_data + CDMR_epic, DMR_list)
+crosstab
+
+DMR_list = cbind(DMR_beta, CDMR_epic)
+crosstab <- xtabs(~DMR_beta + CDMR_epic, DMR_list)
+crosstab
+
+DMR_list = cbind(DMR_beta, DMR_data)
+crosstab <- xtabs(~DMR_beta + DMR_data, DMR_list)
+crosstab
+
+chisq.test(crosstab)
+fisher.test(crosstab)
+OR = (crosstab[1,1]+crosstab[2,2])/(crosstab[1,2]+crosstab[2,1])
+phi = (prod(c(crosstab[1,1],crosstab[2,2]))-prod(crosstab[1,2],crosstab[2,1]))/sqrt(prod(rowSums(crosstab))*prod(rowSums(t(crosstab))))
+```

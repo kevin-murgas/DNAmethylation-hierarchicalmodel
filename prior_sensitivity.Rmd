@@ -1,0 +1,47 @@
+---
+title: "DNAm Hierarchical Model - Prior Sensitivity Analysis "
+author: "Kevin Murgas"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    fig_caption: true
+    number_section: true
+    toc: true
+---
+
+\newpage
+Prior sensitivity is assessed by looking at Stan fit results of different sets of priors, each with an increasing level of variance relaxation. Current data: 1x (original), 2x, 3x, and 5x.
+\newline Priors are assessed by 3 metrics: n_eff and Rhat to assess Stan MCMC convergence, and Kullback-Leibler divergence to assess prior constraints.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(gtools)
+
+# set working directory
+setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
+library(here)
+
+select <- dplyr::select
+rename <- dplyr::rename
+filter <- dplyr::filter
+slice <- dplyr::slice
+
+set.seed(1234)
+```
+
+```{r prior_sensitivity, echo=FALSE}
+
+for (i in c(1:4)) {
+  stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
+  stanFile = switch(i,
+                    "FullResultsTCGA_gamma.Rdata",
+                    "FullResultsTCGA_relaxgamma2.Rdata",
+                    "FullResultsTCGA_relaxgamma3.Rdata",
+                    "FullResultsTCGA_relaxgamma5.Rdata")
+  print(stanFile)
+  #load(here(stanFile))
+}
+
+```

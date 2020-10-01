@@ -60,7 +60,7 @@ set.seed(1234)
 # Load raw methylation data
 load(here("myFA_bulkonly.Rdata"))
 
-stanFile = "FullResultsTCGA_relaxgamma3_postsum3.Rdata"
+stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
 load(here(stanFile))
 ```
 
@@ -835,115 +835,6 @@ bind_rows(
   theme(legend.position = "none")
 ```
 
-<!-- \newpage -->
-<!-- \section{Patient-specific analysis} -->
-<!-- Basic overview: using a specified number of genes (here 100), take top genes (here using score_prob bootstrapping percentiles) to select a "gene signature" of sorts. Then for each patient, calculate the mean pair-wise distance within the individual patients' tumor samples. Method 1 is these raw values, method 2 normalizes by the mean PWD of all normal samples. Method 3 just examines the overall mean PWD for all tumor samples, normalized by mean PWD of all normal. -->
-
-<!-- ```{r PatientPWD, echo=FALSE, message=FALSE, warning=FALSE, comment=NA, fig.height=9, fig.width=7} -->
-<!-- library(gtools) -->
-
-<!-- # pull out all samples beta values -->
-<!-- all_beta <- FullAnnotation[,10:57] -->
-
-<!-- # extract patient and tissue labels -->
-<!-- patientLabel <- substr(colnames(all_beta), 1, 1) -->
-<!-- patientLabel[10:12] <- "K*" -->
-<!-- tissueLabel <- substr(colnames(all_beta), 2, 2) -->
-<!-- tissueLabel[!(tissueLabel %in% "N")] <- "T"   #replace A/B/D/M with T -->
-
-<!-- pats = patientLabel %>% sort %>% unique -->
-<!-- npat = length(pats) -->
-
-<!-- enrichedGenes <- permed_data %>% filter(score_prob_v3 < quantile(score_prob_v3, 0.05, na.rm = TRUE)) %>% -->
-<!--   select(UCSC_RefGene_Name, score_prob, score_prob_v3, n) %>% -->
-<!--   rename(Gene=UCSC_RefGene_Name, Pctile=score_prob_v3) -->
-
-<!-- #ngene = 70 # using top N genes -->
-<!-- #genes = enrichedGenes %>% top_n(-ngene,Pctile) %>% pull(Gene) -->
-<!-- #genes = genes[1:ngene] -->
-
-<!-- genes = enrichedGenes$Gene -->
-<!-- ngene = length(genes) -->
-
-<!-- pwd <- function(x) { -->
-<!--   mean(dist(x)) -->
-<!-- } -->
-<!-- pwd2 <- function(x) { -->
-<!--   abs(diff(x)) -->
-<!-- } -->
-
-<!-- signature_mat1 = matrix(,ngene,npat) # raw tumor pwd -->
-<!-- signature_mat2 = matrix(,ngene,npat) # tumor pwd normalized by all normal pwd -->
-<!-- for (igene in 1:ngene) { -->
-<!--   # each gene, get gene inds, calculate PWD for the tumor samples -->
-<!--   geneind = grep(genes[igene], FullAnnotation$UCSC_RefGene_Name) -->
-
-<!--   # calculate PWD of each tumor -->
-<!--   tum_pwd <- numeric(npat) -->
-<!--   for (ipat in 1:npat) { -->
-<!--     # each patient, get tumor sample inds -->
-<!--     patind <- which(patientLabel == pats[ipat] & tissueLabel == "T") -->
-<!--     tum_pwd[ipat] <- all_beta[geneind,patind] %>% logit %>% apply(1,pwd2) %>% mean -->
-<!--   } -->
-
-<!--   # calculate PWD of all normal -->
-<!--   norm_pwd <- all_beta[geneind,tissueLabel == "N"] %>% logit %>% apply(1, pwd) %>% mean -->
-
-<!--   signature_mat1[igene,] = tum_pwd -->
-<!--   signature_mat2[igene,] = tum_pwd/norm_pwd -->
-<!-- } -->
-
-<!-- #cat("  \n\\newline  \nMethod 1 - raw intratumor PWD within each patient") -->
-<!-- #signature_mat1 %>% as_tibble %>% `colnames<-`(pats) %>% gather %>% -->
-<!-- #  mutate(gene=rep(genes,npat)) %>% rename(Patient=key,PWD=value) %>% -->
-<!-- #  ggplot + geom_tile(aes(y=gene,x=Patient,fill=PWD)) + ylab(paste0(ngene," genes")) + -->
-<!-- #  theme(axis.text.y = element_blank()) -->
-<!-- #cat("  \n\\newline  \nMethod 2 - intratumor PWD normalized by all normal PWD") -->
-<!-- #signature_mat2 %>% as_tibble %>% `colnames<-`(pats) %>% gather %>% -->
-<!-- #  mutate(gene=rep(genes,npat)) %>% rename(Patient=key,PWD=value) %>% -->
-<!-- #  ggplot + geom_tile(aes(y=gene,x=Patient,fill=PWD)) + ylab(paste0(ngene," genes")) + -->
-<!-- #  theme(axis.text.y = element_blank()) -->
-<!-- #cat("  \n\\newline  \nMethod 3 - all tumor PWD normalized by all normal PWD") -->
-<!-- #signature_mat3 %>% as_tibble %>% mutate(gene=genes) %>% rename(PWD=V1) %>% -->
-<!-- #  ggplot + geom_tile(aes(y=gene,x=1,fill=PWD)) + ylab(paste0(ngene," genes")) + -->
-<!-- #  theme(axis.text.y = element_blank()) -->
-
-<!-- library(pheatmap) -->
-<!-- library(dendsort) -->
-
-<!-- cat("  \n\\newline  \nMethod 1 - raw intratumor PWD within each patient") -->
-<!-- df1 = as.data.frame(signature_mat1) -->
-<!-- rownames(df1) <- genes -->
-<!-- colnames(df1) <- pats -->
-<!-- sort_hclust <- function(...) as.hclust(dendsort(as.dendrogram(...))) -->
-<!-- mat_cluster_cols <- sort_hclust(hclust(dist(t(df1)))) -->
-<!-- mat_cluster_rows <- sort_hclust(hclust(dist(df1))) -->
-<!-- pheatmap( -->
-<!--   mat=df1, -->
-<!--   cluster_cols = mat_cluster_cols, -->
-<!--   cluster_rows = mat_cluster_rows, -->
-<!--   show_rownames = FALSE, -->
-<!--   show_colnames = TRUE, -->
-<!--   main = "Top 1118 Genes: Tumor PWD" -->
-<!-- ) -->
-
-<!-- cat("  \n\\newline  \nMethod 2 - intratumor PWD normalized by all normal PWD") -->
-<!-- df1 = as.data.frame(signature_mat2) -->
-<!-- rownames(df1) <- genes -->
-<!-- colnames(df1) <- pats -->
-<!-- sort_hclust <- function(...) as.hclust(dendsort(as.dendrogram(...))) -->
-<!-- mat_cluster_cols <- sort_hclust(hclust(dist(t(df1)))) -->
-<!-- mat_cluster_rows <- sort_hclust(hclust(dist(df1))) -->
-<!-- pheatmap( -->
-<!--   mat=df1, -->
-<!--   cluster_cols = mat_cluster_cols, -->
-<!--   cluster_rows = mat_cluster_rows, -->
-<!--   show_rownames = FALSE, -->
-<!--   show_colnames = TRUE, -->
-<!--   main = "Top 1118 Genes: Tumor PWD" -->
-<!-- ) -->
-<!-- ``` -->
-
 \newpage
 \section{Appendix: Enrichment Gene/Pathway Lists}
 \subsection{A1: SigmaP}
@@ -956,6 +847,10 @@ enrichedGenes <- permed_data %>%
   arrange(Pctile)
 
 enrichedPaths <- tibble(Pathway = enrich_sigmaP$Description, ngenes = enrich_sigmaP$Count, padj = enrich_sigmaP$p.adjust) %>% arrange(padj)
+geneList <- enrich_reactome$geneID %>% strsplit(split='/') %>%
+  lapply(function(x) AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, x, 'SYMBOL', 'ENTREZID')) %>%
+  lapply(function(x) paste(x,collapse=";")) %>% unlist
+enrichedPaths$Genes = geneList
 
 ngene <- dim(enrichedGenes)[1]
 npath <- length(enrich_sigmaP$Description)
@@ -988,6 +883,10 @@ enrichedGenes <- permed_data %>%
   arrange(Pctile)
 
 enrichedPaths <- tibble(Pathway = enrich_sigmaPT$Description, ngenes = enrich_sigmaPT$Count, padj = enrich_sigmaPT$p.adjust) %>% arrange(padj)
+geneList <- enrich_reactome$geneID %>% strsplit(split='/') %>%
+  lapply(function(x) AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, x, 'SYMBOL', 'ENTREZID')) %>%
+  lapply(function(x) paste(x,collapse=";")) %>% unlist
+enrichedPaths$Genes = geneList
 
 ngene <- dim(enrichedGenes)[1]
 npath <- length(enrich_sigmaPT$Description)
@@ -1019,6 +918,10 @@ enrichedGenes <- permed_data %>%
   arrange(Pctile)
 
 enrichedPaths <- tibble(Pathway = enrich_sigmaT$Description, ngenes = enrich_sigmaT$Count, padj = enrich_sigmaT$p.adjust) %>% arrange(padj)
+geneList <- enrich_reactome$geneID %>% strsplit(split='/') %>%
+  lapply(function(x) AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, x, 'SYMBOL', 'ENTREZID')) %>%
+  lapply(function(x) paste(x,collapse=";")) %>% unlist
+enrichedPaths$Genes = geneList
 
 ngene <- dim(enrichedGenes)[1]
 npath <- length(enrich_sigmaT$Description)
@@ -1038,68 +941,6 @@ enrichedGenes %>% pander()
 cat("SigmaT top 30 enriched paths:  \n")
 enrichedPaths %>% pander()
 ```
-
-<!-- \newpage -->
-<!-- \subsection{A4: Score Prob} -->
-<!-- Genes are selected with cutoff >95th percentile (adjusted bootstrap), showing top 50 genes/pathways -->
-<!-- ```{r App_score_prob, echo=FALSE, comment=NA, message=FALSE} -->
-<!-- enrichedGenes <- permed_data %>%  -->
-<!--   select(UCSC_RefGene_Name, score_prob, score_prob_v3, n) %>% -->
-<!--   rename(Gene=UCSC_RefGene_Name, Score_median=score_prob, Pctile=score_prob_v3) %>% -->
-<!--   filter(Pctile > quantile(Pctile, 0.95, na.rm = TRUE)) %>% -->
-<!--   arrange(Pctile) -->
-
-<!-- enrichedPaths <- tibble(Pathway = enrich_score_prob$Description, ngenes = enrich_score_prob$Count, padj = enrich_score_prob$p.adjust) %>% arrange(padj) -->
-
-<!-- ngene <- dim(enrichedGenes)[1] -->
-<!-- npath <- length(enrich_score_prob$Description) -->
-
-<!-- cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath)) -->
-
-<!-- nshow = 50 -->
-<!-- if (ngene > nshow) { -->
-<!--   enrichedGenes <- enrichedGenes[1:nshow,] -->
-<!-- } -->
-<!-- if (npath > nshow) { -->
-<!--   enrichedPaths <- enrichedPaths[1:nshow,] -->
-<!-- } -->
-
-<!-- enrichedGenes %>% pander() -->
-
-<!-- cat("Score_prob top 50 enriched paths:  \n") -->
-<!-- enrichedPaths %>% pander() -->
-<!-- ``` -->
-
-<!-- \newpage -->
-<!-- \subsection{A5: Score Mean} -->
-<!-- Genes are selected with cutoff >95th percentile (adjusted bootstrap), showing top 50 genes/pathways -->
-<!-- ```{r App_score_mean, echo=FALSE, comment=NA, message=FALSE} -->
-<!-- enrichedGenes <- permed_data %>%  -->
-<!--   select(UCSC_RefGene_Name, score_mean, score_mean_v3, n) %>% -->
-<!--   rename(Gene=UCSC_RefGene_Name, Score_median=score_mean, Pctile=score_mean_v3) %>% -->
-<!--   filter(Pctile > quantile(Pctile, 0.95, na.rm = TRUE)) %>% -->
-<!--   arrange(Pctile) -->
-
-<!-- enrichedPaths <- tibble(Pathway = enrich_score_mean$Description, ngenes = enrich_score_mean$Count, padj = enrich_score_mean$p.adjust) %>% arrange(padj) -->
-
-<!-- ngene <- dim(enrichedGenes)[1] -->
-<!-- npath <- length(enrich_score_mean$Description) -->
-
-<!-- cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath)) -->
-
-<!-- nshow = 50 -->
-<!-- if (ngene > nshow) { -->
-<!--   enrichedGenes <- enrichedGenes[1:nshow,] -->
-<!-- } -->
-<!-- if (npath > nshow) { -->
-<!--   enrichedPaths <- enrichedPaths[1:nshow,] -->
-<!-- } -->
-
-<!-- enrichedGenes %>% pander() -->
-
-<!-- cat("Score_mean top 50 enriched paths:  \n") -->
-<!-- enrichedPaths %>% pander() -->
-<!-- ``` -->
 
 \newpage
 \subsection{A6: Score Median}
@@ -1129,68 +970,5 @@ if (npath > nshow) {
 enrichedGenes %>% pander()
 
 cat("Score_median top 50 enriched paths:  \n")
-enrichedPaths %>% pander()
-```
-
-\newpage
-\subsection{A7: Score Median2}
-Genes are selected with cutoff >95th percentile (adjusted bootstrap), showing top 50 genes/pathways
-```{r App_score_median2, echo=FALSE, comment=NA, message=FALSE}
-enrichedGenes <- permed_data %>% 
-  select(UCSC_RefGene_Name, score_median2, score_median2_v3, n) %>%
-  rename(Gene=UCSC_RefGene_Name, Score_median2=score_median2, Pctile=score_median2_v3) %>%
-  filter(Pctile > quantile(Pctile, 0.95, na.rm = TRUE)) %>%
-  arrange(Pctile)
-
-enrichedPaths <- tibble(Pathway = enrich_score_median2$Description, ngenes = enrich_score_median2$Count, padj = enrich_score_median2$p.adjust) %>% arrange(padj)
-
-ngene <- dim(enrichedGenes)[1]
-npath <- length(enrich_score_median2$Description)
-
-cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath))
-
-nshow = 50
-if (ngene > nshow) {
-  enrichedGenes <- enrichedGenes[1:nshow,]
-}
-if (npath > nshow) {
-  enrichedPaths <- enrichedPaths[1:nshow,]
-}
-
-enrichedGenes %>% pander()
-
-cat("Score_median2 top 50 enriched paths:  \n")
-enrichedPaths %>% pander()
-```
-
-
-\newpage
-\subsection{A9: Score Regularized}
-Genes are selected with cutoff >95th percentile (adjusted bootstrap), showing top 50 genes/pathways
-```{r App_score_reg, echo=FALSE, comment=NA, message=FALSE}
-enrichedGenes <- permed_data %>% 
-  select(UCSC_RefGene_Name, score_reg, score_reg_v3, n) %>%
-  rename(Gene=UCSC_RefGene_Name, Score_reg=score_reg, Pctile=score_reg_v3) %>%
-  filter(Pctile > quantile(Pctile, 0.95, na.rm = TRUE)) %>%
-  arrange(Pctile)
-
-enrichedPaths <- tibble(Pathway = enrich_score_reg$Description, ngenes = enrich_score_reg$Count, padj = enrich_score_reg$p.adjust) %>% arrange(padj)
-
-ngene <- dim(enrichedGenes)[1]
-npath <- length(enrich_score_reg$Description)
-
-cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath))
-
-nshow = 50
-if (ngene > nshow) {
-  enrichedGenes <- enrichedGenes[1:nshow,]
-}
-if (npath > nshow) {
-  enrichedPaths <- enrichedPaths[1:nshow,]
-}
-
-enrichedGenes %>% pander()
-
-cat("Score_reg top 50 enriched paths:  \n")
 enrichedPaths %>% pander()
 ```
