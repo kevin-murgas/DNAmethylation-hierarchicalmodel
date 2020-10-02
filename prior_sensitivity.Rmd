@@ -17,7 +17,8 @@ Prior sensitivity is assessed by looking at Stan fit results of different sets o
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(knitr)
-library(gtools)
+#library(gtools)
+library(emdist)
 
 # set working directory
 setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
@@ -27,11 +28,15 @@ select <- dplyr::select
 rename <- dplyr::rename
 filter <- dplyr::filter
 slice <- dplyr::slice
-
-set.seed(1234)
 ```
 
-```{r prior_sensitivity, echo=FALSE}
+```{r prior_sensitivity, echo=FALSE, comment=NA}
+
+n_eff_mat <- data.frame(Params=c("mu","betaT","sigmaP","sigmaPT","sigmaT","sigmaE","lp"))
+Rhat_mat <- n_eff_mat
+KLdiv_mat <- n_eff_mat %>% slice(1:6)
+BCdist_mat <- KLdiv_mat
+EMdist_mat <- KLdiv_mat
 
 for (i in c(1:4)) {
   stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
@@ -41,7 +46,139 @@ for (i in c(1:4)) {
                     "FullResultsTCGA_relaxgamma3.Rdata",
                     "FullResultsTCGA_relaxgamma5.Rdata")
   print(stanFile)
-  #load(here(stanFile))
+  load(here(stanFile))
+  print("loaded")
+  
+  n_eff_temp <-
+  data.frame(
+  mu = mu_full$n_eff,
+  betaT = betaT_full$n_eff,
+  sigmaP = sigmaP_full$n_eff,
+  sigmaPT = sigmaPT_full$n_eff,
+  sigmaT = sigmaT_full$n_eff,
+  sigmaE = sigmaE_full$n_eff,
+  lp = lp_full$n_eff
+  ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
+  mean = mean(value),
+  .groups = "drop"
+  ) %>% arrange(match(.$param,c("mu","betaT","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+  
+  Rhat_temp <-
+  data.frame(
+  mu = mu_full$Rhat,
+  betaT = betaT_full$Rhat,
+  sigmaP = sigmaP_full$Rhat,
+  sigmaPT = sigmaPT_full$Rhat,
+  sigmaT = sigmaT_full$Rhat,
+  sigmaE = sigmaE_full$Rhat,
+  lp = lp_full$Rhat
+  ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
+  mean = mean(value),
+  .groups = "drop"
+  ) %>% arrange(match(.$param,c("mu","betaT","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+  
+  # KL divergence
+  # formula: KL(P||Q) = sum(P(i) * log( P(i)/Q(i) )), where P(i),Q(i) = density
+  KL_temp <- numeric(6)
+  #Bhattacharya distance
+  # formula: BC = sum( sqrt(P(i)*Q(i)) )
+  BC_temp <- numeric(6)
+  # Earth-movers (Wasserstein) distance
+  EM_temp <- numeric(6)
+  
+  for (j in c(1:6)) {
+    # choose parameter
+    data <- switch(j,
+                   mu_full$p50,
+                   betaT_full$p50,
+                   sigmaP_full$p50,
+                   sigmaPT_full$p50,
+                   sigmaT_full$p50,
+                   sigmaE_full$p50)
+    breaks <- switch(j,
+                     seq(-5,5,0.1),
+                     seq(-6,6,0.12), #5.5,.11
+                     seq(0,3,0.03), #2.6
+                     seq(0,3,0.03),
+                     seq(0,3,0.03), #1.2
+                     seq(0,3,0.03)) #2.5
+    P <- hist(data, plot=FALSE, breaks=101) # run hist to get density and midpoints
+    x <- P$mids
+    # define prior density by pre-defined priors at P midpoints
+    if (i==1){ # non relaxed (1x)
+      priordens <- switch(j,
+                      0.3557*dnorm(x, -3.0675, 0.75214) + 0.6443*dnorm(x, 1.1290, 1.3920),
+                      dcauchy(x, -0.04051, 0.19330),
+                      dgamma(x, 5.1989, 16.6192),
+                      dgamma(x, 3.5539, 5.5324),
+                      dgamma(x, 6.8383, 25.7560),
+                      dgamma(x,2,2))
+    } else if (i==2) { # 2x relaxed
+      priordens <- switch(j,
+                      0.3557*dnorm(x, -3.0675, 1.0637) + 0.6443*dnorm(x, 1.1290, 1.9685),
+                      dcauchy(x,-0.04051, 0.38660),
+                      dgamma(x, 3.4016, 9.5057),
+                      dgamma(x, 2.5210, 3.2948),
+                      dgamma(x, 4.2574, 14.370),
+                      dgamma(x,2,2))
+    } else if (i==3) { # 3x relaxed
+      priordens <- switch(j,
+                      0.3557*dnorm(x, -3.0675, 1.3027) + 0.6443*dnorm(x, 1.1290, 2.4110),
+                      dcauchy(x,-0.04051, 0.5799),
+                      dgamma(x, 2.7693, 7.0029),
+                      dgamma(x, 2.1457, 2.4819),
+                      dgamma(x, 3.3643, 10.430),
+                      dgamma(x,2,2))
+    } else if (i==4) { # 5x relaxed
+      priordens <- switch(j,
+                      0.3557*dnorm(x, -3.0675, 1.6818) + 0.6443*dnorm(x, 1.1290, 3.1125),
+                      dcauchy(x,-0.04051, 0.96650),
+                      dgamma(x, 2.2298, 4.8674),
+                      dgamma(x, 1.8166, 1.7689),
+                      dgamma(x, 2.6144, 7.1221),
+                      dgamma(x,2,2))
+    }
+    Pi <- P$density[which(P$density>0)]
+    Qi <- priordens[which(P$density>0)]
+    KL_temp[j] = sum(Pi * log(Pi/Qi))
+    
+    # BCD
+    BC_temp[j] = -log(sum(sqrt(P$density*priordens)))
+    
+    # EMD
+    A = cbind(P$density,P$mids)
+    B = cbind(priordens,P$mids)
+    EM_temp[j] = emd(A,B)
+    
+    # code below is for plotting data vs priors
+    #Q <- P
+    #Q$density <- priordens
+    #Q$counts <- Q$density*866091*(Q$breaks[2]-Q$breaks[1])
+    #c1 <- rgb(173,216,230,max = 255, alpha = 80, names = "lt.blue")
+    #c2 <- rgb(255,192,203, max = 255, alpha = 80, names = "lt.pink")
+    #plot(P,col=c1, main=paste("i=",i,", j=",j))
+    #plot(Q,col=c2,add=TRUE)
+  }
+  
+  varname = switch(i, "1x", "2x", "3x", "5x")
+  n_eff_mat <- n_eff_mat %>% mutate(!!varname := n_eff_temp$mean)
+  Rhat_mat <- Rhat_mat %>% mutate(!!varname := Rhat_temp$mean)
+  KLdiv_mat <- KLdiv_mat %>% mutate(!!varname := KL_temp)
+  BCdist_mat <- BCdist_mat %>% mutate(!!varname := BC_temp)
+  EMdist_mat <- EMdist_mat %>% mutate(!!varname := EM_temp)
+  
 }
+
+print("N_eff")
+kable(n_eff_mat, digits=2)
+print("Rhat")
+kable(Rhat_mat, digits=3)
+print("KLdiv")
+kable(KLdiv_mat, digits=3)
+cat("\newpage")
+print("BCdist")
+kable(BCdist_mat, digits=3)
+print("EMdist")
+kable(EMdist_mat, digits=3)
 
 ```

@@ -80,8 +80,6 @@ cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways
 cat("score_median top enriched paths:  \n")
 enrichedPaths %>% pander()
 
-knit_exit()
-
 ```
 
 <!-- \newpage -->
@@ -156,7 +154,8 @@ for (iset in 1:nsets) {
   
   # convert to CDF, compute K-S-like statistic
   v <- cumsum(runsum)
-  score <- max(c(0,v)) + min(c(0,v))
+  #score <- max(v) # GSEA score
+  score <- max(c(0,v)) + min(c(0,v)) # GSVA score
   GSEA_df$score[iset] <- score
 }
 cat(proc.time()-ptm)
@@ -173,23 +172,24 @@ shuffle_genesets <- function(n_geneset, n_rep, data) {
   bootstrap = numeric(n_rep)
   for (ishuf in 1:n_rep) {
     # for random shuffles just make a random logical mask
-    inds = sample(1:ngene, n_geneset, replace = F)
+    inds = sample(1:ngene, n_geneset, replace = T)
     inmask = logical(ngene)
     inmask[inds] = TRUE
     runsum = evidence/sum(evidence[inmask]) * inmask - 1/(ngene - length(set)) * !inmask
     
     # convert to CDF, compute K-S-like statistic
     v <- cumsum(runsum)
-    score <- max(c(0, v)) + min(c(0, v))
+    #score <- max(v) # GSEA score
+    score <- max(c(0, v)) + min(c(0, v)) # GSVA score
     bootstrap[ishuf] <- score
   }
   bootstrap
 }
 
 names(setlengths) <- setlengths
-cat(sprintf("Shuffling %i set-lengths: 1000x random shuffles (w/o replacement)",length(setlengths)))
+cat(sprintf("Shuffling %i set-lengths: 5000x random shuffles (w/ replacement)",length(setlengths)))
 ptm<-proc.time()
-res <- lapply(setlengths, shuffle_genesets, n_rep = 1000, data = evidence)
+res <- lapply(setlengths, shuffle_genesets, n_rep = 5000, data = evidence)
 proc.time()-ptm
 
 # map enrichment scores to get percentiles on bootstrap null distribution using upper tail probability
