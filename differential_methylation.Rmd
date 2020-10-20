@@ -64,7 +64,8 @@ tissueLabel <- substr(colnames(all_beta), 2, 2)
 tissueLabel[!(tissueLabel %in% "N")] <- "T"
 
 # convert to M values, tInd
-all_M <- logit(all_beta)
+all_M <- logit(all_beta) # base e
+#all_M <- log2(all_beta/(1-all_beta)) # base 2
 tInd <- tissueLabel=="T"
 
 nsamp = dim(all_beta)[2]
@@ -122,9 +123,6 @@ betaT_stats <- betaT_full %>% mutate(tstat = p50/(sem*sqrt(n_eff))) %>%
   mutate(zscore = p50/sd_all) %>%
   mutate(pz = 2*pnorm(abs(zscore),lower.tail=FALSE)) %>%
   mutate(qvalBHz = p.adjust(pz, method="BH"))
-
-
-
 ```
 
 \section{Compare to Irizarry et al 2009}
@@ -132,17 +130,20 @@ Irizarry use a similar differential methylation profiling approach in colorectal
 \newline Doi et al. 2009 (same group as Irizarry 2009), perform a similar analysis to determine C-DMRs in colorectal cancer. These C-DMRs are reported in the "DMR" column of the Illumina EPIC array manifest.
 \newline Summarize % of overlap in each case, using specific bases of CpG sites or using gene names.
 ```{r compare_irizarry, echo=FALSE}
-DMR_data = fit_stats$qvalBH <0.05
-DMR_beta = betaT_stats$qvalBH < 0.05
+DMR_data = (fit_stats$qvalBH < 0.05) & (abs(fit_stats$coefficients.deltaM) > 1.4)
+DMR_beta = (betaT_stats$qvalBH < 0.05) & (abs(betaT_stats$p50) > 1.4)
 CDMR_epic = (FullAnnotation$DMR == "CDMR") #| (FullAnnotation$DMR == "DMR")
 
-DMR_list = cbind(DMR_data, CDMR_epic)
-crosstab <- xtabs(~DMR_data + CDMR_epic, DMR_list)
-crosstab
+cor(fit_stats$tstat.ord,betaT_stats$tstat)
+cor(fit_stats$coefficients.deltaM,betaT_stats$p50)
 
-DMR_list = cbind(DMR_beta, CDMR_epic)
-crosstab <- xtabs(~DMR_beta + CDMR_epic, DMR_list)
-crosstab
+# DMR_list = cbind(DMR_data, CDMR_epic)
+# crosstab <- xtabs(~DMR_data + CDMR_epic, DMR_list)
+# crosstab
+
+# DMR_list = cbind(DMR_beta, CDMR_epic)
+# crosstab <- xtabs(~DMR_beta + CDMR_epic, DMR_list)
+# crosstab
 
 DMR_list = cbind(DMR_beta, DMR_data)
 crosstab <- xtabs(~DMR_beta + DMR_data, DMR_list)
@@ -152,4 +153,9 @@ chisq.test(crosstab)
 fisher.test(crosstab)
 OR = (crosstab[1,1]+crosstab[2,2])/(crosstab[1,2]+crosstab[2,1])
 phi = (prod(c(crosstab[1,1],crosstab[2,2]))-prod(crosstab[1,2],crosstab[2,1]))/sqrt(prod(rowSums(crosstab))*prod(rowSums(t(crosstab))))
+
+# a few correlations between linear and betaT methods
+cor(fit_stats$tstat.ord,betaT_stats$tstat)
+cor(fit_stats$coefficients.deltaM,betaT_stats$p50)
+
 ```

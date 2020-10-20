@@ -307,7 +307,7 @@ betaT_ests <- betaT_ests[which(!!betaT_ests)]
 
 # examine histograms of estimates
 hist(sigmaP_ests,breaks=seq(0,ceiling(max(sigmaP_ests)),0.02),xlim=c(0,2),main="sigmaP, all patients")
-hist(sigmaPT_ests,breaks=seq(-3.2,ceiling(max(sigmaPT_ests)),0.02),xlim=c(-1.5,3),main="sigmaPT, all patients")
+hist(sigmaPT_ests,breaks=seq(-3.2,ceiling(max(sigmaPT_ests)),0.02),xlim=c(0,2),main="sigmaPT, all patients")
 hist(sigmaT_ests,breaks=seq(0,ceiling(max(sigmaT_ests)),0.02),xlim=c(0,2),main="sigmaT, all patients")
 hist(mu_ests,breaks=100,xlim=c(-6,6),main="mu, all patients")
 hist(betaT_ests,breaks=100,xlim=c(-5,5),main="betaT, all patients")

@@ -35,14 +35,20 @@ site <- function (site_no) {
   # here we use all patient samples, excluding glands
   #indices <- c(10:14, 16:40,47,48,58,59,73:76,87:96) # if using full data file
   indices <- c(10:57) # if using bulk only data file
-  patientLabel <- substr(colnames(temp[indices]),1,1)
+  patientLabel <- substr(colnames(temp[indices]), 1, 1)
   patientLabel[10:12] <- "K*"
-  sideLabel <- substr(colnames(temp[indices]),2,2)
+  sideLabel <- substr(colnames(temp[indices]), 2, 2)
   tissueLabel <- sideLabel
   tissueLabel[!(sideLabel %in% c("N"))] <- "T"   #replace A/B/D/M with T
-  tumorIndicator <- 1*(tissueLabel=="T")
+  tumorIndicator <- 1 * (tissueLabel=="T")
   
-  work <- data.frame(beta=logit(t(temp[indices])), patient = patientLabel, tissue=tissueLabel, side=sideLabel, tInd=tumorIndicator)
+  work <- data.frame(
+    beta = logit(t(temp[indices])),
+    patient = patientLabel,
+    tissue = tissueLabel,
+    side = sideLabel,
+    tInd = tumorIndicator
+    )
   colnames(work)[1] <- "beta"
   return(work)
 }
@@ -50,10 +56,10 @@ site <- function (site_no) {
 # Using Model with TCGA priors (previously model 3)
 stanfit_model <- function (dataset) {
   stanDat <- list(
-    N = nrow(dataset),
-    P = nlevels(dataset$patient),
     pID = as.integer(factor(dataset$patient)),
     tInd = dataset$tInd,
+    N = nrow(dataset),
+    P = nlevels(dataset$patient),
     y = dataset[, 1]
     )
   stanFit <-
@@ -100,7 +106,17 @@ fitplot <- function(data,stanFit) {
 }
 
 # Plot posterior distribution
-postplot <- function(stanFit) {
+postplot_mubetaT <- function(stanFit) {
+  p2 <- mcmc_areas(
+    as.array(stanFit), 
+    pars = c("mu","betaT"),
+    prob = 0.8, # 80% intervals
+    prob_outer = 0.95, 
+    point_est = "median"
+  )
+  return(p2)
+}
+postplot_sigmas <- function(stanFit) {
   p2 <- mcmc_areas(
     as.array(stanFit), 
     pars = c("sigma_p", "sigma_pt","sigma_t","sigma_e"),
@@ -118,7 +134,7 @@ siteInds <- sample(1:866091,50)
 nsites <- length(siteInds)
 
 # check for model_TCGApriors.rds, must add to prevent crash
-checkFile <- "model_relaxedgamma5.rds"
+checkFile <- "model_relaxedgamma3.rds"
 if (file.exists(checkFile)) {
   file.remove(checkFile)
   print("caught one!") 
@@ -133,12 +149,14 @@ stanDat1 <- list(
   tInd = data1$tInd,
   y = data1[, 1]
 )
-emptyFit <- stan(file="model_relaxedgamma5.stan", data = stanDat1, chains = 0)
+emptyFit <- stan(file="model_relaxedgamma3.stan", data = stanDat1, chains = 0)
 
+# inds for extracting data (mean, sem, median, n_eff, Rhat)
+mInd <- c(1, 2, 6, 9, 10)
 ```
 
 ```{r echo=FALSE,include=TRUE,error=FALSE,message=FALSE,warning=FALSE,results='asis',fig.keep='all',fig.show='asis',fig.height=2.9,fig.width=5}
-# fig.align='center'
+
 ptm <- proc.time()
 n_eff_sum<-numeric(6)
 for (i in siteInds) {
@@ -148,7 +166,8 @@ for (i in siteInds) {
   
   # plot the fit plot (data and fit overlays), and posteriors of sigmas
   p1 <- fitplot(data, stanFit) + ggtitle(paste("Site", i, ": Beta Fits by Patient"))
-  p2 <- postplot(stanFit) + ggtitle("Sigma Posteriors")
+  p15 <- postplot_mubetaT(stanFit) + ggtitle("Mu/BetaT Posteriors")
+  p2 <- postplot_sigmas(stanFit) + ggtitle("Sigma Posteriors")
   p3 <- traceplot(stanFit,pars=c("sigma_p","sigma_pt","sigma_t","sigma_e"),inc_warmup=TRUE,ncol=1,window=c(0,1000)) + theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank(),axis.text.y=element_text(angle=45),legend.position="none")
   p4 <- ggarrange(p2,p3,nrow=1,ncol=2)
   print(p1)
@@ -156,11 +175,21 @@ for (i in siteInds) {
   
   # text output:
   cat(paste("  \nSite ",i,": Parameter posterior summary\n",sep=''))
-  # print (or table) mean, median, R_hat, n_eff for each of the 6 params
-  datasumm <-summary(stanFit)$summary[1:6,c(1,6,9,10)]
-  print(kable(datasumm))
+  
+  # take summary values for first 6 params (mu, betaT, sigmas x4) and last param (lp__)
+  fitSumm <- summary(stanFit)$summary[c(1:6,97), mInd]
+  
+  # compute posterior log-ratio: log(sigmaP/sigmaT), take integral>0, mean, median
+  posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_t"))
+  logPTratio <- log(posterior[,1]/posterior[,2])
+  CpGscore <- c(mean(logPTratio > 0), mean(logPTratio), median(logPTratio))
+  fitSumm <- rbind(fitSumm,CpGscore)
+  
+  # print kable of summary values
+  print(kable(fitSumm))
   cat("  \n")
-  n_eff_sum <- n_eff_sum + datasumm[,3]
+  
+  n_eff_sum <- n_eff_sum + fitSumm[,3]
 }
 mtp <- proc.time() - ptm
 

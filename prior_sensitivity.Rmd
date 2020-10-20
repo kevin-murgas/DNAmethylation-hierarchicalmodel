@@ -19,6 +19,7 @@ library(tidyverse)
 library(knitr)
 #library(gtools)
 library(emdist)
+library(ggpubr)
 
 # set working directory
 setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
@@ -28,6 +29,92 @@ select <- dplyr::select
 rename <- dplyr::rename
 filter <- dplyr::filter
 slice <- dplyr::slice
+```
+
+```{r prior_dataAndFits, echo=FALSE, comment=NA}
+# load TCGA-based 450K array estimates (see estimateTCGApriors.R for data+fits)
+load("/Users/kevinmurgas/Documents/Data+ project/TCGA data/estimates_allpats.Rdata")
+
+# remove all zeros, and take square root of variance (stored variable) to get sigma/stdev
+sigmaP_ests <- sqrt(sigmaP_ests[which(!!sigmaP_ests)])
+sigmaPT_ests <- sqrt(sigmaPT_ests[which(!!sigmaPT_ests)])
+sigmaT_ests <- sqrt(sigmaT_ests[which(!!sigmaT_ests)])
+mu_ests <- mu_ests[which(!!mu_ests)]
+betaT_ests <- betaT_ests[which(!!betaT_ests)]
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+cols = gg_color_hue(4)
+
+# ggplot histograms, with fit overlays
+# mu
+# 1x: 0.35570*normal(-3.0675,0.75214) + 0.64430*normal(1.1290, 1.3920)
+# 2x: 0.35570*normal(-3.0675, 1.0637) + 0.64430*normal(1.1290, 1.9685)
+# 3x: 0.35570*normal(-3.0675, 1.3027) + 0.64430*normal(1.1290, 2.4110)
+# 5x: 0.35570*normal(-3.0675, 1.6818) + 0.64430*normal(1.1290, 3.1125)
+f <- function(x, a, m1, s1, m2, s2) a*dnorm(x,m1,s1) + (1-a)*dnorm(x,m2,s2)
+p1 <- ggplot(data.frame(p=mu_ests), aes(x=p)) + geom_histogram(binwidth=0.1,aes(y=..density..),fill="lightgray") + theme_classic() +
+  #labs(x=expression(mu)) +
+  xlim(-6,6) +
+  stat_function(fun=function(x) f(x,0.3557,-3.0675, 0.75214,1.1290, 1.39197),geom="line",color=cols[1]) +
+  stat_function(fun=function(x) f(x,0.3557,-3.0675, 1.0637,1.1290, 1.9685),geom="line",color=cols[2]) +
+  stat_function(fun=function(x) f(x,0.3557,-3.0675, 1.3027,1.1290, 2.4110),geom="line",color=cols[3]) +
+  stat_function(fun=function(x) f(x,0.3557,-3.0675, 1.6818,1.1290, 3.1125),geom="line",color=cols[4])
+# betaT
+# 1x: Cauchy(-0.04051, 0.19330)
+# 2x: Cauchy(-0.04051, 0.38660)
+# 3x: Cauchy(-0.04051, 0.57990)
+# 5x: Cauchy(-0.04051, 0.96650)
+p2 <- ggplot(data.frame(p=betaT_ests), aes(x=p)) + geom_histogram(binwidth=0.1,aes(y=..density..),fill="lightgray") + theme_classic() +
+  #labs(x=expression(nu)) +
+  xlim(-5,5) +
+  stat_function(fun=function(x) dcauchy(x,-0.04051, 0.19330),geom="line",color=cols[1]) +
+  stat_function(fun=function(x) dcauchy(x,-0.04051, 0.38660),geom="line",color=cols[2]) +
+  stat_function(fun=function(x) dcauchy(x,-0.04051, 0.57990),geom="line",color=cols[3]) +
+  stat_function(fun=function(x) dcauchy(x,-0.04051, 0.96650),geom="line",color=cols[4])
+# sigmaE: all gamma(2,2)
+p3 <- ggplot() + stat_function(fun=function(x) dgamma(x,2,2),geom="line",color="black") + xlim(0,2) + theme_classic() + labs(x=expression(sigma[E]))
+# sigmaP
+# 1x: gamma(5.1989, 16.6192)
+# 2x: gamma(3.4016, 9.5057)
+# 3x: gamma(2.7693, 7.0029)
+# 5x: gamma(2.2298, 4.8674)
+p4 <- ggplot(data.frame(p=sigmaP_ests), aes(x=p)) + geom_histogram(binwidth=0.02,aes(y=..density..),fill="lightgray") + theme_classic() +
+  #labs(x=expression(sigma[P])) +
+  xlim(0,2) +
+  stat_function(fun=function(x) dgamma(x,5.1989, 16.6192),geom="line",color=cols[1]) +
+  stat_function(fun=function(x) dgamma(x,3.4016, 9.5057),geom="line",color=cols[2]) +
+  stat_function(fun=function(x) dgamma(x,2.7693, 7.0029),geom="line",color=cols[3]) +
+  stat_function(fun=function(x) dgamma(x,2.2298, 4.8674),geom="line",color=cols[4])
+# sigmaPT
+# 1x: gamma(3.5539, 5.5324)
+# 2x: gamma(2.5210, 3.2948)
+# 3x: gamma(2.1457, 2.4819)
+# 5x: gamma(1.8166, 1.7689)
+p5 <- ggplot(data.frame(p=sigmaPT_ests), aes(x=p)) + geom_histogram(binwidth=0.02,aes(y=..density..),fill="lightgray") + theme_classic() +
+  #labs(x=expression(sigma[PT])) +
+  xlim(0,2) +
+  stat_function(fun=function(x) dgamma(x,3.5539, 5.5324),geom="line",color=cols[1]) +
+  stat_function(fun=function(x) dgamma(x,2.5210, 3.2948),geom="line",color=cols[2]) +
+  stat_function(fun=function(x) dgamma(x,2.1457, 2.4819),geom="line",color=cols[3]) +
+  stat_function(fun=function(x) dgamma(x,1.8166, 1.7689),geom="line",color=cols[4])
+# sigmaT
+# 1x: gamma(6.8383, 25.7560)
+# 2x: gamma(4.2574, 14.370)
+# 3x: gamma(3.3643, 10.430)
+# 5x: gamma(2.6144, 7.1221)
+p6 <- ggplot(data.frame(p=sigmaT_ests), aes(x=p)) + geom_histogram(binwidth=0.02,aes(y=..density..),fill="lightgray") + theme_classic() +
+  xlim(0,2) +
+  #labs(x=expression(sigma[T])) +
+  stat_function(fun=function(x) dgamma(x,6.8383, 25.7560),geom="line",color=cols[1]) +
+  stat_function(fun=function(x) dgamma(x,4.2574, 14.370),geom="line",color=cols[2]) +
+  stat_function(fun=function(x) dgamma(x,3.3643, 10.430),geom="line",color=cols[3]) +
+  stat_function(fun=function(x) dgamma(x,2.6144, 7.1221),geom="line",color=cols[4])
+
+p_all <- ggarrange(p1,p2,p3,p4,p5,p6)
+# ggsave("prior_fits_all.svg",p_all,height=3,width=5.53,dpi=300)
 ```
 
 ```{r prior_sensitivity, echo=FALSE, comment=NA}
@@ -143,7 +230,8 @@ for (i in c(1:4)) {
     KL_temp[j] = sum(Pi * log(Pi/Qi))
     
     # BCD
-    BC_temp[j] = -log(sum(sqrt(P$density*priordens)))
+    dx <- x[2]-x[1]
+    BC_temp[j] = -log(sum(sqrt(P$density*priordens)*dx))
     
     # EMD
     A = cbind(P$density,P$mids)
@@ -175,10 +263,63 @@ print("Rhat")
 kable(Rhat_mat, digits=3)
 print("KLdiv")
 kable(KLdiv_mat, digits=3)
-cat("\newpage")
+cat("\n")
 print("BCdist")
 kable(BCdist_mat, digits=3)
 print("EMdist")
 kable(EMdist_mat, digits=3)
 
+```
+
+\newpage
+Plots
+```{r plots, echo=FALSE, comment=NA}
+# goal here is to just get the distributions of parameters for each prior set
+# store histogram density, and KDE
+# plot histogram with side-by-side bar plots
+# plot KDE's as line plots
+
+mu_allprior <- data.frame(x1=numeric(866091),
+                          x2=numeric(866091),
+                          x3=numeric(866091),
+                          x5=numeric(866091))
+betaT_allprior <- mu_allprior
+sigmaP_allprior <- mu_allprior
+sigmaPT_allprior <- mu_allprior
+sigmaT_allprior <- mu_allprior
+sigmaE_allprior <- mu_allprior
+
+for (i in c(1:4)) {
+  stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
+  stanFile = switch(i,
+                    "FullResultsTCGA_gamma.Rdata",
+                    "FullResultsTCGA_relaxgamma2.Rdata",
+                    "FullResultsTCGA_relaxgamma3.Rdata",
+                    "FullResultsTCGA_relaxgamma5.Rdata")
+  print(stanFile)
+  load(here(stanFile))
+  print("loaded")
+  
+  mu_allprior[,i] <- mu_full$p50
+  betaT_allprior[,i] <- betaT_full$p50
+  sigmaP_allprior[,i] <- sigmaP_full$p50
+  sigmaPT_allprior[,i] <- sigmaPT_full$p50
+  sigmaT_allprior[,i] <- sigmaT_full$p50
+  sigmaE_allprior[,i] <- sigmaE_full$p50
+}
+
+cat("Posterior estimates for varying prior relaxation")
+pM <- mu_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-6,6) + ggtitle("Mu") + theme_classic() + theme(legend.position = "none")
+pB <- betaT_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-5,5) + ggtitle("BetaT") + theme_classic() + theme(legend.position = "none")
+pP <- sigmaP_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(0,2) + ggtitle("sigmaP") + theme_classic() + theme(legend.position = "none")
+pPT <- sigmaPT_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(0,2) + ggtitle("sigmaPT") + theme_classic() + theme(legend.position = "none")
+pT <- sigmaT_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(0,2) + ggtitle("sigmaT") + theme_classic() + theme(legend.position = "none")
+pE <- sigmaE_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(0,2) + ggtitle("sigmaE") + theme_classic() + theme(legend.position = "none")
+pLP <- sigmaP_allprior %>% gather("relax","val",1:4) %>% mutate(val=log(val)) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-4,1) + ggtitle("log(sigmaP)") + theme_classic() + theme(legend.position = "none")
+pLPT <- sigmaPT_allprior %>% gather("relax","val",1:4) %>% mutate(val=log(val)) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-4,1) + ggtitle("log(sigmaPT)") + theme_classic() + theme(legend.position = "none")
+pLT <- sigmaT_allprior %>% gather("relax","val",1:4) %>% mutate(val=log(val)) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-4,1) + ggtitle("log(sigmaT)") + theme_classic() + theme(legend.position = "none")
+
+p_all<- ggarrange(pM, pB, pE, pP, pPT, pT, pLP, pLPT, pLT, nrow=3, ncol=3)
+print(p_all)
+# ggsave("prior_sens_kdes.svg",p1)
 ```
