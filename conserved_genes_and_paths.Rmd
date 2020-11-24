@@ -14,7 +14,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(pander)
 library(gt)
-library(dplyr)
 # set working directory
 setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
 library(here)
@@ -23,7 +22,7 @@ rename <- dplyr::rename
 select <- dplyr::select
 slice <- dplyr::slice
 
-permed_data <- read_csv(here("data-stan_rg3ps3", "permed_data.csv"))
+permed_data <- read_csv(here("data_final_rg3", "permed_data.csv"))
 #enrichedGenes <- read_csv(here("prob1genes.csv"))
 
 ```
@@ -51,17 +50,26 @@ enrichedGenes <- permed_data %>%
 
 #write.csv(enrichedGenes %>% select(Gene), here("prob1genes.csv"), col.names=FALSE, row.names = FALSE, quote = FALSE)
 
-
-# Gene Set Enrichment
-tidy_gsea <- function(genes) {
+# Gene Set Enrichment with Reactome
+tidy_reactome <- function(genes) {
   AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, genes, 'ENTREZID', 'SYMBOL') %>%
     ReactomePA::enrichPathway()
+}
+# GSEA with KEGG
+tidy_kegg <- function(genes) {
+  AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, genes, 'ENTREZID', 'SYMBOL') %>%
+    clusterProfiler::enrichKEGG()
 }
 
 cat("Begin reactome GSEA...")
 ptm<-proc.time()
 enrich_reactome <-enrichedGenes %>%
-  pull(Gene) %>% tidy_gsea()
+  pull(Gene) %>% tidy_reactome()
+proc.time()-ptm
+cat("Begin KEGG GSEA...")
+ptm<-proc.time()
+enrich_kegg <-enrichedGenes %>%
+  pull(Gene) %>% tidy_kegg()
 proc.time()-ptm
 
 enrichedPaths <- tibble(Pathway = enrich_reactome$Description, ngenes = enrich_reactome$Count, padj = enrich_reactome$p.adjust) %>% arrange(padj)
