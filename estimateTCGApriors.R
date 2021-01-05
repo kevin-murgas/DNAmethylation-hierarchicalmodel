@@ -68,7 +68,7 @@ for(i in dataLabel){
 print(paste("# sites with at least one NA: ",length(NAsites)))
 
 # randomly select 5 sites in 1-485577 (excluding sites with any NA samples)
-#nsites <- 10000
+#nsites <- 5
 #siteInds <- sample(setdiff(1:485577,NAsites),nsites)
 
 # alternatively, use the entire set

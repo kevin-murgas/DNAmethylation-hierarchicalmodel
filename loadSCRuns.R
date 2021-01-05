@@ -9,8 +9,8 @@ library(reshape2)
 
 ### LOADING FOR STAN MODEL RESULTS
 
-# Set working directory to normal data wd then folder ResultsC
-setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data/Stan Results Archive/FinalRuns/ResultsTCGA_gamma")
+# Set working directory to normal data wd then folder with Results files from StanCParallel.R on all sites
+setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data/Stan Results Archive/FinalRuns/ResultsTCGA_relaxgamma5")
 
 mu_full <-
   data.frame(
@@ -21,7 +21,7 @@ mu_full <-
     Rhat = numeric(866091)
   )
 
-betaT_full <- mu_full
+nu_full <- mu_full
 sigmaP_full <- mu_full
 sigmaPT_full <- mu_full
 sigmaT_full <- mu_full
@@ -45,7 +45,7 @@ for (i in filesPresent) {
   }
   allInds <- append(allInds, inds)
   mu_full[inds, ] <- mu_C
-  betaT_full[inds, ] <- betaT_C
+  nu_full[inds, ] <- nu_C
   sigmaP_full[inds, ] <- sigmaP_C
   sigmaPT_full[inds, ] <- sigmaPT_C
   sigmaT_full[inds, ] <- sigmaT_C
@@ -53,6 +53,6 @@ for (i in filesPresent) {
   lp_full[inds, ] <- lp_C
   CpGscore_full[inds, ] <- CpGscore
 }
-save(mu_full, betaT_full, sigmaP_full, sigmaT_full, sigmaPT_full, sigmaE_full,
-      lp_full, CpGscore_full, file = "FullResultsTCGA_gamma.Rdata")
+save(mu_full, nu_full, sigmaP_full, sigmaT_full, sigmaPT_full, sigmaE_full,
+      lp_full, CpGscore_full, file = "FullResultsTCGA_relaxgamma5.Rdata")
 

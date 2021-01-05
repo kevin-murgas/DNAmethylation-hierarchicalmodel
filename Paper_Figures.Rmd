@@ -39,20 +39,11 @@ stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
 load(here(stanFile))
 
 prepdatafolder = "data_final_rg3"
-cat(sprintf("Load prepped data dir: %s (needs to be pre-processed)...",prepdir))
+cat(sprintf("Load prepped data dir: %s (needs to be pre-processed)...",prepdatafolder))
 gened_data <- read_csv(here(prepdatafolder, "gened_data.csv"), col_types = list("CHR" = col_character()))
 prepped_data <- read_csv(here(prepdatafolder, "prepped_data.csv"))
 permed_data <- read_csv(here(prepdatafolder, "permed_data.csv"))
 
-# # plot beta/M values
-# all_beta = FullAnnotation[,-c(1,2,3,4,5,6,7,8,9)]
-# mean_beta = rowMeans(all_beta)
-# all_M = logit(all_beta)
-# mean_M = rowMeans(all_M)
-# p_beta <- data.frame(value=mean_beta) %>% gather %>% ggplot() + geom_histogram(aes(x=value),binwidth=0.01,fill="lightgray",color="grey50") + theme_classic() + xlim(c(0,1)) + theme(aspect.ratio = 1) + xlab("Beta value")
-# p_M <- data.frame(value=mean_M) %>% gather %>% ggplot() + geom_histogram(aes(x=value),binwidth=0.1,fill="lightgray",color="grey50") + theme_classic() + xlim(c(-5,5)) + theme(aspect.ratio = 1) + xlab("M value")
-# p_BM <- ggarrange(p_beta, p_M, nrow = 1, ncol = 2)
-# # ggsave("betaMdists.svg",p_BM)
 ```
 
 \newpage
@@ -70,7 +61,7 @@ $$ \alpha_i \sim N(0,\sigma_P) , \beta_i \sim N(0,\sigma_{PT}) , \gamma_{ij} \si
 \newline Model is fit at each individual CpG site using RStan's MCMC sampling algorithm. \newline
 Stan Parameters: 4 chains x 2000 iterations (200 warmup) = 7200 total draws. adapt_delta = 0.999 
 
-\subsection{Prior Probabilities}
+\subsection{Prior Probabilities (Fig S1)}
 Priors for each parameter (mu, nu, sigmaP/PT/T) were defined using TCGA 450k array data from colorectal tumor patients with paired multiple tumor and/or normal+tumor samples. \newline Empirical values of mean and standard deviations were assesed for all 450k CpG sites. \newline The resulting distributions were fit with: bimodal gaussian (mu), Cauchy (betaT), or gamma distributions (sigmas). \newline
 SigmaE (error variance) prior was defined using a non-informative gamma distribution: gamma(2,2).
 \newline Additionally: Prior relaxation was performed by algebraically increasing the variance of the distributions (or each Gaussian component in the case of mu) while maintaining the same mode (peak).
@@ -104,7 +95,7 @@ post_prior_histogram <- function(vals,priorfun1,priorfun2,bw,xl,titlestr,legFlag
   p1
 }
 
-# plot mu,betaT,sigmaE,sigmaP,sigmaPT,sigmaT with priors overlaid
+# plot TCGA estimates for mu,betaT,sigmaE,sigmaP,sigmaPT,sigmaT; with prior fits overlaid
 pM <- post_prior_histogram(mu_ests, function(x) fBG(x,0.3557,-3.0675, 0.75214,1.1290, 1.39197), function(x) fBG(x,0.3557,-3.0675, sqrt(3)*0.75214,1.1290, sqrt(3)*1.39197), 0.1, c(-5,5), "Mu")
 pB <- post_prior_histogram(betaT_ests, function(x) dcauchy(x,-0.04051, 0.19330), function(x) dcauchy(x,-0.04051, 0.5799), 0.1, c(-5,5), "Nu")
 pP <- post_prior_histogram(sigmaP_ests, function(x) dgamma(x, 5.1989, 16.6192), function(x) dgamma(x, 2.7693, 7.0029), 0.05, c(0,2), "SigmaP")
@@ -131,12 +122,13 @@ $$\text{score}_\text{med} = \text{Median} (\text{log}_2\frac{\sigma_{P}}{\sigma_
 
 \newpage
 \subsection{Figure 2A: Example site fit, 2B: Posteriors}
-![Fit](/Users/kevinmurgas/Documents/Data+ project/Manuscript/example_fit.png)
+![Fit](/Users/kevinmurgas/Documents/Data+ project/Manuscript/Paper Figures (screenshots)/example_fit.png)
 \newline \newline
-![Posteriors](/Users/kevinmurgas/Documents/Data+ project/Manuscript/example_posteriors.png)
+![Posteriors](/Users/kevinmurgas/Documents/Data+ project/Manuscript/Paper Figures (screenshots)/example_posteriors.png)
+
 \newpage
-\section{Figure 2: Model Fit Results}
-\subsection{Parameter Distributions}
+\section{Model Fit Results}
+\subsection{Fig 3C: Parameter Distributions}
 Histograms are median values of posterior distribution
 ```{r Params_site, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
 genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
@@ -154,7 +146,7 @@ post_prior_histogram <- function(postvals,mask,priorfun,bw,xl,titlestr) {
   p1
 }
 
-# plot mu,betaT,sigmaE,sigmaP,sigmaPT,sigmaT with priors overlaid
+# plot hierarchical model posterior medians for mu,betaT,sigmaE,sigmaP,sigmaPT,sigmaT; with priors overlaid
 pM <- post_prior_histogram(mu_full$p50, genemask, function(x) 1.5*fBG(x,0.3557,-3.0675, 0.75214,1.1290, 1.39197), 0.1, c(-5,5), "Mu")
 pB <- post_prior_histogram(betaT_full$p50, genemask, function(x) 1.7*dcauchy(x,-0.04051, 0.5799), 0.1, c(-5,5), "BetaT")
 pE <- post_prior_histogram(sigmaE_full$p50, genemask, function(x) 4*dgamma(x,2,2), 0.05, c(0,2), "SigmaE")
@@ -170,48 +162,6 @@ pLT <- post_prior_histogram(log(sigmaT_full$p50), genemask, function(x) 0.4*dgam
 p_all <- ggarrange(pM,pB,pE,pP,pPT,pT,pLP,pLPT,pLT,hjust=0,nrow=3,ncol=3)
 print(p_all)
 rm(pM,pB,pE,pP,pPT,pT,pLP,pLPT,pLT)
-```
-
-\subsection{Conservation score}
-```{r Fig1B, echo=FALSE, fig.height=2, fig.width=6.5, fig.fullwidth=TRUE, warning=FALSE}
-
-post_histogram <- function(postvals,mask,bw,xl,titlestr) {
-  # stacked histogram colored by gene-associated sites
-  # and prior curve overlaid
-  plot_df <- data.frame(val=postvals, gene_assoc=mask)
-  p1 <- ggplot(plot_df, aes(x=val)) +
-    geom_histogram(aes(y=..count../length(mask),fill=gene_assoc), binwidth=bw) +
-    ggtitle(titlestr) + xlim(xl) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Freq.")
-}
-
-
-# overlaid transparent histograms
-post_histogram <- function(postvals,mask,bw,titlestr) {
-  # stacked histogram colored by gene-associated sites
-  # and prior curve overlaid
-  plot_df <- data.frame(val=postvals, gene_assoc=mask)
-  gene_assoc_df <- plot_df %>% filter(gene_assoc)
-  not_gene_assoc_df <- plot_df %>% filter(!gene_assoc)
-  p1 <- ggplot(plot_df, aes(x=val)) +
-    geom_histogram(data=not_gene_assoc_df, aes(y=..density..,fill="#00BFC4",alpha=0.4), binwidth=bw) +
-    geom_histogram(data=gene_assoc_df, aes(y=..density..,fill="#F8766D",alpha=0.4), binwidth=bw) +
-    ggtitle(titlestr) + xlab(titlestr) + ylab("Density") + theme_classic() 
-  p1
-}
-
-# plot the two conservations score prob sums
-genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
-p_scores <- post_histogram(CpGscore_full$median,genemask,0.05,"CpG Conservation score") +
-  theme(aspect.ratio=1/4,legend.position = "none") +
-  scale_x_continuous(limits=c(-3,3),breaks=c(-3,-2,-1,0,1,2,3))
-print(p_scores)
-# ggsave("CpGscores_overlay.svg")
-
-# plot gene scores and adjusted bootstrap distribution
-p1 <- permed_data %>% ggplot(aes(x=score_median)) + geom_histogram(aes(y=..count..), binwidth=0.05, fill="lightgray",color = "grey50") + xlim(c(-1,2.5)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
-p2 <- permed_data %>% ggplot(aes(x=score_median_v3)) + geom_histogram(aes(y=..count..), binwidth=0.02, fill="lightgray", color="grey50") + xlim(c(0,1)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
-p_genes <- ggarrange(p1,p2,nrows=2,ncol=1)
-# ggsave("gene_scores_bootstrap.svg")
 ```
 
 \newpage
@@ -269,18 +219,61 @@ QCinds <- lp_full$Rhat > 1.1
 
 For the remainder of these results, a filter is applied to remove all sites with Rhat > 1.1 in lp (log-posterior likelihood of entire site fit). Another filter is later applied to remove all genes with <5 CpG sites.
 
+\subsection{Fig 3A: Conservation score}
+```{r Fig3A, echo=FALSE, fig.height=2, fig.width=6.5, fig.fullwidth=TRUE, warning=FALSE}
+
+# staggered (dodge) histograms
+post_histogram <- function(postvals,mask,bw,titlestr) {
+  # stacked histogram colored by gene-associated sites
+  plot_df <- data.frame(val=postvals, gene_assoc=mask)
+  p1 <- ggplot(plot_df, aes(x=val)) +
+    geom_histogram(aes(y=..density..,fill=gene_assoc), binwidth=bw, position="dodge") +
+    ggtitle(titlestr) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Freq.")
+}
+
+# overlaid transparent histograms
+post_histogram <- function(postvals,mask,bw,titlestr) {
+  # transparent histogram colored by gene-associated sites
+  plot_df <- data.frame(val=postvals, gene_assoc=mask)
+  gene_assoc_df <- plot_df %>% filter(gene_assoc)
+  not_gene_assoc_df <- plot_df %>% filter(!gene_assoc)
+  p1 <- ggplot(plot_df, aes(x=val)) +
+    geom_histogram(data=not_gene_assoc_df, aes(y=..density..,fill="#00BFC4",alpha=0.4), binwidth=bw) +
+    geom_histogram(data=gene_assoc_df, aes(y=..density..,fill="#F8766D",alpha=0.4), binwidth=bw) +
+    ggtitle(titlestr) + xlab(titlestr) + ylab("Density") + theme_classic() 
+  p1
+}
+
+# plot the two conservations score prob sums (using /log(2) to convert log_e to log_2)
+genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
+p_scores <- post_histogram(CpGscore_full$median/log(2),genemask,0.05,"CpG Conservation score") +
+  theme(aspect.ratio=1/4,legend.position = "none") +
+  scale_x_continuous(limits=c(-4,4),breaks=c(-4,-2,0,2,4)) + 
+  scale_y_continuous(breaks=c(0,0.1,0.2,0.3,0.4,0.5))
+print(p_scores)
+# ggsave("CpGscores_overlay.svg")
+
+# Fig 4B: plot gene scores and adjusted bootstrap distribution
+p1 <- permed_data %>% ggplot(aes(x=score_median/log(2))) + geom_histogram(aes(y=..count..), binwidth=0.1, fill="lightgray",color = "grey50") + xlim(c(-1.5,3.5)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
+p2 <- permed_data %>% ggplot(aes(x=score_median_v3)) + geom_histogram(aes(y=..count..), binwidth=0.02, fill="lightgray", color="grey50") + xlim(c(0,1)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
+p_genes <- ggarrange(p1,p2,nrows=2,ncol=1)
+# ggsave("gene_scores_bootstrap.svg")
+```
+
+
 \newpage
 \subsection{Intra-gene conservation}
 We examine intra gene conservation 2 ways: a table looking at gene regulatory regions, and a CpG-distance analysis
 
-\subsection{Regulatory regions}
-Table comparing different groups of CpG sites:
-```{r Table1, echo=FALSE, warning=FALSE}
-
+\subsection{CpG Island Relation (Fig 3B)}
+Table comparing different groups of CpG sites based on CpG Island relationship: Island, Shore, Shelf, Sea
+```{r CpGIslandRelation, echo=FALSE, warning=FALSE}
 #, include=TRUE, results='asis', fig.keep='all', fig.show='asis', fig.height=3, fig.width=5
 
+# for a table summary of sigmas and conservation score
 prepped_data %>%
   group_by(`Island relation` = Relation_to_UCSC_CpG_Island) %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
   summarise_at(vars(sigmaP:sigmaT,score_median), mean, na.rm = TRUE) %>%
   dplyr::rename(ir = `Island relation`) %>%
   mutate(ir = case_when(is.na(ir) ~ "Sea",
@@ -295,20 +288,38 @@ prepped_data %>%
   tab_spanner(label = "Hierarchical Variances", columns = vars(sigmaP, sigmaPT, sigmaT)) %>% cols_align("center")
 
 # stats for cpg island relations
-# summarize mean of each group, do kruskal wallis and post hoc Tukey
 my_data = prepped_data %>% select(score_median, Relation_to_UCSC_CpG_Island) %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
   group_by(ir = Relation_to_UCSC_CpG_Island) %>%
   mutate(ir = case_when(is.na(ir) ~ "Sea",
                         str_detect(ir, "^S") ~ str_replace(ir, "^S_", ""),
                         str_detect(ir, "^N") ~ str_replace(ir, "^N_", ""),
                         TRUE ~ ir))
-my_data %>%
-  summarise_at(vars(score_median), mean, na.rm = TRUE)
+# summarize mean of each group and convert to fold change
+my_data %>% summarise_at(vars(score_median), mean, na.rm = TRUE) %>% mutate(fc = 2^score_median)
+# run Kruskal Wallis ANOVA and post-hoc Tukey
 kruskal.test(score_median ~ ir, data = my_data)
 #install.packages("MultNonParam")
 library(MultNonParam)
 tukey.kruskal.test(my_data$score_median, my_data$ir, alpha = 0.001)
 
+# Fig 3B: plot CpG island relation score distributions
+prepped_data %>% select(Name, Relation_to_UCSC_CpG_Island, score_median) %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
+  dplyr::rename(ir = Relation_to_UCSC_CpG_Island, score=score_median) %>%
+  mutate(ir = case_when(is.na(ir) ~ "Sea",
+                        str_detect(ir, "^S") ~ str_replace(ir, "^S_", ""),
+                        str_detect(ir, "^N") ~ str_replace(ir, "^N_", ""),
+                        TRUE ~ ir)) %>%
+  mutate(ir = factor(ir, levels = c("Island", "Shore", "Shelf", "Sea"))) %>%
+  #mutate(ir = factor(ir, levels = c("Sea", "Shelf", "Shore", "Island"))) %>%
+  ggplot() + geom_violin(aes(x=ir,y=score,fill=ir),draw_quantiles = 0.5) + theme_classic() + scale_y_continuous(limits=c(-5,5),breaks=c(-4,-2,0,2,4)) + theme(aspect.ratio=1/4,legend.position = "none")
+# ggsave("CpGscore_islands_violin.svg")
+```
+
+\subsection{Functional Regions (Fig 3C)}
+Table comparing different groups of CpG sites based on functional regions: 5'UTR, TSS1500, TSS200, 1stExon, Body, ExonBnd, 3'UTR
+```{r FunctionalRegions, echo=FALSE, warning=FALSE}
 # stats for functional regions
 summarize_conservation <- function(data,str) {
   indsin <- str_detect(data$UCSC_RefGene_Group, str) & !is.na(data$UCSC_RefGene_Group)
@@ -320,21 +331,24 @@ summarize_conservation <- function(data,str) {
   data.frame(cons_in=mean(data$score_median[indsin], na.rm=TRUE),
          cons_out=mean(data$score_median[indsout],na.rm=TRUE),
          nsites=sum(indsin),
+         nout=sum(indsout),
          pval=wilcox.test(data$score_median[indsin],data$score_median[indsout])$p.value)
 }
 
-bind_rows({prepped_data %>% summarize_conservation("any") %>% mutate(region="Gene-Associated")},
+temp <- bind_rows({prepped_data %>% summarize_conservation("any") %>% mutate(region="Gene-Associated")},
           {prepped_data %>% summarize_conservation("TSS1500") %>% mutate(region="TSS1500")},
           {prepped_data %>% summarize_conservation("TSS200") %>% mutate(region="TSS200")},
           {prepped_data %>% summarize_conservation("5'UTR|5UTR|5URT") %>% mutate(region="5'UTR")},
           {prepped_data %>% summarize_conservation("1stExon") %>% mutate(region="1stExon")},
+          {prepped_data %>% summarize_conservation("ExonBnd") %>% mutate(region="ExonBnd")},
           {prepped_data %>% summarize_conservation("Body") %>% mutate(region="Body")},
           {prepped_data %>% summarize_conservation("3'UTR|3UTR") %>% mutate(region="3'UTR")}) %>%
-  select(c(region,cons_in,cons_out,nsites,pval)) %>%
-  gt() %>%
-  fmt_number(columns = vars(cons_in,cons_out,pval), decimals = 3)
+  select(c(region,cons_in,cons_out,nsites,nout,pval)) %>%
+  mutate(cons_in = cons_in/log(2), cons_out = cons_out/log(2)) %>% # change of base e to base 2
+  mutate(fold_change = 2^cons_in, fold_diff = 2^(cons_in - cons_out)) # calculating fold difference (2^ (log2 difference))
+temp %>% gt() %>% fmt_number(columns = vars(cons_in,cons_out,pval), decimals = 3)
 
-# new stats
+# multiple regression stats (using log2 score)
 FRdata = data.frame(CpGscore = log2(prepped_data$sigmaP / prepped_data$sigmaT) ) %>%
   mutate(FR = pull(prepped_data,UCSC_RefGene_Group)) %>%
   mutate(FR=if_else(is.na(FR),"NA",FR)) %>%
@@ -345,18 +359,37 @@ FRdata = data.frame(CpGscore = log2(prepped_data$sigmaP / prepped_data$sigmaT) )
          iTSS1500 = str_detect(FR,"TSS1500"),
          i1stEx = str_detect(FR,"1stExon"),
          iExBnd = str_detect(FR,"ExonBnd"))
+
+# lm model
 fr.lm = lm(formula = CpGscore ~ iTSS200 + i5UTR + iBody + i3UTR + iTSS1500 + i1stEx + iExBnd, data = FRdata)
-#fr.lm = lm(formula = CpGscore ~ iTSS200 + i5UTR + iBody + i3UTR, data = FRdata)
 summary(fr.lm)
 
-library(rcompanion)
-fr.srh = scheirerRayHare(formula = CpGscore ~ iTSS200 + i5UTR + iBody + i3UTR + iTSS1500 + i1stEx + iExBnd, data = FRdata)
+# Fig 3C: plot functional region score distributions
+temp <- prepped_data %>% select(Name, UCSC_RefGene_Group, score_median) %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
+  separate_rows(UCSC_RefGene_Group, sep=";") %>%
+  distinct() %>%
+  dplyr::rename(fr = UCSC_RefGene_Group, score=score_median) %>%
+  mutate(fr = case_when(fr=="" ~ "NA",
+                        str_detect(fr, "5URT") ~ "5'UTR",
+                        str_detect(fr, "3UTR") ~ "3'UTR",
+                        TRUE ~ fr)) %>%
+  distinct()
+#keepregions = c("TSS1500","Body", "3'UTR","1stExon","TSS200","5'UTR","ExonBnd")
+keepregions = c("TSS200","1stExon", "5'UTR","TSS1500","Body","3'UTR","ExonBnd")
+temp %>%
+  mutate(fr = factor(fr, levels = keepregions)) %>%
+  filter(fr %in% keepregions) %>%
+  ggplot() + geom_violin(aes(x=fr,y=score,fill=fr), draw_quantiles = 0.5) + theme_classic() + scale_y_continuous(limits=c(-5,5),breaks=c(-4,-2,0,2,4,6)) + theme(aspect.ratio=1/4,legend.position = "none") + geom_hline(yintercept = 0, color="black", alpha=0.2)
+# ggsave("CpGscore_regions_violin.svg")
+#rm(temp)
+
 ```
 
 \newpage
-\subsection{Figure 1: CpG Distance Analysis}
+\subsection{Figure 3D: CpG Distance Analysis}
 Corrected for gene direction, based on Ensembl gene database \newline
-```{r Fig1, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=3, comment=NA}
+```{r Fig3D, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=3, comment=NA}
 # load ensembl db
 library(EnsDb.Hsapiens.v75) # ensembl annotation with gene position (hg19 version)
 edb <- EnsDb.Hsapiens.v75
@@ -369,6 +402,7 @@ edbData<- AnnotationDbi::select(edb, keys=geneKeys, keytype="GENENAME",
 
 # calculate CpG distance based on Ensembl gene start position and direction
 distanced_data <- gened_data %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
   filter(!is.na(UCSC_RefGene_Name)) %>%
   filter(UCSC_RefGene_Name %in% geneKeys) %>%
   mutate(EDBCHR=edbData$SEQNAME[match(UCSC_RefGene_Name,edbData$GENENAME)],
@@ -381,33 +415,13 @@ distanced_data <- gened_data %>%
 
 distance_length <- distanced_data %>%
   filter(!is.na(UCSC_RefGene_Name)) %>%
-  select(CHR, UCSC_RefGene_Name, cpgdist, c(sigmaP:sigmaT,score_median:score_reg)) %>%
+  select(CHR, UCSC_RefGene_Name, cpgdist, c(score_median)) %>%
   mutate(location_bin = cut(cpgdist, c(seq(-1500, 20000, by = 100)), include.lowest = TRUE)) %>%
   group_by(location_bin) %>%
-  summarise(mean_sigmaP = mean(sigmaP), mean_sigmaPT = mean(sigmaPT), mean_sigmaT = mean(sigmaT),  mean_score_median = mean(score_median), mean_score_median2 = mean(score_median2), n_obs = n(), .groups='drop') %>%
+  summarise(mean_score_median = mean(score_median), n_obs = n(), .groups='drop') %>%
   mutate(location_bin = as.numeric(str_extract(location_bin, "(?<=,)(.*)(?=])")))
 
-distance_length %>%
-  drop_na() %>%
-  pivot_longer(mean_sigmaP:mean_sigmaT) %>% 
-  mutate(name = factor(name, c("mean_sigmaP","mean_sigmaPT","mean_sigmaT"), c("SigmaP","SigmaPT","SigmaT"))) %>%
-  sample_frac() %>%
-  ggplot(aes(location_bin, value, color = name, fill = name)) +
-  geom_point(key_glyph = draw_key_rect) +
-  ggforce::facet_zoom(location_bin < 5000) +
-  theme_light() +
-  theme(legend.position = "bottom") +
-  labs(title = NULL,
-       fill = NULL,
-       color = NULL,
-       x = "Distance from gene start site (binned to 100 bp)",
-       y = "Average Sigma Value", 
-       caption = "Figure 1: Average Sigma values of single CpGs as a function of position relative to gene.") +
-  scale_color_brewer(palette = "Set2") +
-  scale_fill_brewer(palette = "Set2")
-cat("\n")
-
-# again for conservation scores
+# plot for conservation scores
 distance_length %>%
   drop_na() %>%
   pivot_longer(mean_score_median) %>% 
@@ -423,44 +437,26 @@ distance_length %>%
        color = NULL,
        x = "Distance from gene start site (binned to 100 bp)",
        y = "Average Conservation Score", 
-       caption = "Figure 1: Average conservation scores of single CpGs as a function of position relative to gene.") +
+       caption = "Figure 3D: Average conservation scores of single CpGs as a function of position relative to gene.") +
   scale_color_brewer(palette = "Set2") +
   scale_fill_brewer(palette = "Set2")
 cat("\n")
-
-# and look at number of CpG in each bin
-distance_length %>%
-  drop_na() %>%
-  pivot_longer(n_obs) %>%
-  mutate(name = factor(name, c("n_obs"), c("n_obs"))) %>%
-  sample_frac() %>%
-  ggplot(aes(location_bin, value, color = name, fill = name)) +
-  geom_point(key_glyph = draw_key_rect) +
-  ggforce::facet_zoom(location_bin < 5000) +
-  theme_light() +
-  theme(legend.position = "bottom") +
-  labs(title = NULL,
-       fill = NULL,
-       color = NULL,
-       x = "Distance from gene start site (binned to 100 bp)",
-       y = "Number of CpGs", 
-       caption = "Figure 1: Frequency of single CpGs as a function of position relative to gene start site.") +
-  scale_color_brewer(palette = "Set2") +
-  scale_fill_brewer(palette = "Set2")
+# ggsave("CpGdist.svg")
 ```
 
 \newpage
 \section{Gene Conservation Scores}
 Genes are scored by average of all CpG sites within gene
-\subsection{Example Genes: APC, TP53, TTN, HLA-A, GAPDH}
+\subsection{Fig 4A: Example Genes: TUBA1A, TTN, HLA-A}
 ```{r examplegenes, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=2, comment=NA}
 # for these genes, show the CpG site distribution, and add vertical lines for the CpG sites in the gene (gened_data?), then a bold yellow vertical line for the overall mean
 
 plotGeneScore <- function(geneStr,norm) {
   CpGscores <- gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^",geneStr,"$"))) %>% pull(score_median)
-  
-  ggplot(prepped_data) + geom_histogram(aes(x=score_median, y=..count../nrow(prepped_data)), binwidth=0.05,fill="lightgray") +
-    xlim(-3,3) + ggtitle(sprintf("%s: CpG scores (%i sites)",geneStr, length(CpGscores))) +
+  # convert log_e to log_2
+  ggplot(prepped_data %>% mutate(score_median = score_median/log(2))) + geom_histogram(aes(x=score_median, y=..count../nrow(prepped_data)), binwidth=0.05,fill="lightgray") + ggtitle(sprintf("%s: CpG scores (%i sites)",geneStr, length(CpGscores))) +
+    scale_x_continuous(limits=c(-5,5), breaks=c(-4,-2,0,2,4)) +
+    scale_y_continuous(limits=c(0,0.03),breaks=c(0,0.01,0.02,0.03)) +
     xlab("CpG conservation score") + ylab("Freq.") + theme_classic() + theme(legend.position = "none") +
     #geom_vline(xintercept=CpGscores, color="red", alpha=0.5, size=0.2) +
     geom_histogram(data=data.frame(score=CpGscores),aes(x=score,y=norm*..count../length(CpGscores)),binwidth=0.05, fill="blue",alpha=0.5) +
@@ -468,193 +464,147 @@ plotGeneScore <- function(geneStr,norm) {
 }
 
 cat("\n")
-#plotGeneScore("TP53",0.5)
-plotGeneScore("TUBA1A",0.285)
+# Fig 4A: Example genes CpG site distributions
+plotGeneScore("TUBA1A",0.2)
 #ggsave("genescore_TUBA1A.svg")
 cat("\n")
-plotGeneScore("TTN",0.37)
+plotGeneScore("TTN",0.26)
 #ggsave("genescore_TTN.svg")
 cat("\n")
-plotGeneScore("HLA-A",0.26)
+plotGeneScore("HLA-A",0.18)
 #ggsave("genescore_HLA-A.svg")
 
 # stats for each gene
 # do one sample wilcoxon rank sum
+# TUBA1A
+gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^TUBA1A$"))) %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
+  summarize(n = n(), mean=mean(score_median)) %>% mutate(fc = 2^mean)
 gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^TUBA1A$"))) %>% pull(score_median) %>% wilcox.test(mu = 0, alternative = "two.sided")
+# TTN
+gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^TTN$"))) %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
+  summarize(n = n(), mean=mean(score_median)) %>% mutate(fc = 2^mean)
 gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^TTN$"))) %>% pull(score_median) %>% wilcox.test(mu = 0, alternative = "two.sided")
+# HLA-A
+gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^HLA-A$"))) %>%
+  mutate(score_median = score_median / log(2) ) %>% # convert log_e to log_2
+  summarize(n = n(), mean=mean(score_median)) %>% mutate(fc = 2^mean)
 gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^HLA-A$"))) %>% pull(score_median) %>% wilcox.test(mu = 0, alternative = "two.sided")
 ```
 
-\subsection{COSMIC Cancer Genes}
+\subsection{CRC Cancer Genes Databases}
 ```{r cancergenes, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=2, comment=NA}
-# make gene-wise averages
-gene_summarize <- function(data, id, value, fun = mean, ...) {
-  grouped_data <- data %>% group_by({{id}})
-  
-  bind_cols(
-    summarise_at(grouped_data, dplyr::vars({{value}}), fun, ...),
-    count(grouped_data) %>% dplyr::ungroup() %>% dplyr::select(.data$n)
-  )
-}
 
-gene_summary <- gened_data %>%
-  filter(!is.na(UCSC_RefGene_Name)) %>%
-  gene_summarize(UCSC_RefGene_Name, c(score_median))
-
+# CRC gene database 1: COSMIC
 cancergenes1 <- read_csv("/Users/kevinmurgas/Documents/Data+ project/Cancer gene lists/SangerCensus_COSMIC_CRC.csv")
-genescores <- gene_summary %>% filter(UCSC_RefGene_Name %in% (cancergenes1 %>% pull(`Gene Symbol`))) %>% pull(score_median)
-ggplot(gene_summary) + geom_histogram(aes(x=score_median, y=..count../nrow(gene_summary)), binwidth=0.05) + xlim(-3,3) + ggtitle(sprintf("Gene Scores of %i CRC Genes", length(genescores))) + xlab("Gene conservation score") + ylab("Freq.") + theme_classic() + theme(legend.position = "none") + geom_vline(xintercept=genescores, color="blue", alpha=0.5, size=0.2)
-cat("\n")
-
-# source 2
+# CRC gene database 2: AGO
 cancergenes2 <- read_csv("/Users/kevinmurgas/Documents/Data+ project/Cancer gene lists/CRCgenes_atlasgeneticsoncology.csv")
-genescores <- gene_summary %>% filter(UCSC_RefGene_Name %in% (cancergenes2 %>% pull(CancerGenes))) %>% pull(score_median)
-ggplot(gene_summary) + geom_histogram(aes(x=score_median, y=..count../nrow(gene_summary)), binwidth=0.05) + xlim(-3,3) + ggtitle(sprintf("Gene Scores of %i CRC Genes", length(genescores))) + xlab("Gene conservation score") + ylab("Freq.") + theme_classic() + theme(legend.position = "none") + geom_vline(xintercept=genescores, color="blue", alpha=0.1, size=0.2)
 
 # compute % overlap of database genes and significant genes (By adj bootstrap)
-n1 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes1 %>% pull(`Gene Symbol`)))
-n2 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes2 %>% pull(CancerGenes)))
+# n1 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes1 %>% pull(`Gene Symbol`)))
+# n2 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes2 %>% pull(CancerGenes)))
 
 # plot violins of: all genes, COSMIC, AGO
-perm_temp <- permed_data %>% select(c(UCSC_RefGene_Name, score_median,score_median_v3,n))
-temp <- rbind(perm_temp %>% mutate(group="all"),
+perm_temp <- permed_data %>% select(c(UCSC_RefGene_Name, score_median,score_median_v3,n)) %>%
+  mutate(score_median2 = score_median/log(2)) # change of base from e to 2
+genes_dbs <- rbind(perm_temp %>% mutate(group="all"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes1 %>% pull(`Gene Symbol`))) %>% mutate(group="COSMIC"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes2 %>% pull(CancerGenes))) %>% mutate(group="AGO")
               )
-temp %>% mutate(group = factor(group, levels = c("COSMIC", "AGO", "all"))) %>%
-  ggplot() + geom_violin(aes(y=score_median,x=group,fill=group), draw_quantiles = 0.5) + scale_y_continuous(limits=c(-1,2),breaks = c(-1,0,1,2)) + theme_classic() + xlab("Database") + ylab("Gene Conservation Score")
+# Fig 4B: plot violins (with log2 base change)
+pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all", "AGO", "COSMIC"))) %>%
+  ggplot() + geom_violin(aes(x=score_median2,y=group,fill=group), draw_quantiles = 0.5) + scale_x_continuous(limits=c(-2,4),breaks = c(-2,0,2,4)) + theme_classic() + ylab("Database") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none")
+# add hashmarks for each gene (doesn't look great)
+marks <- genes_dbs %>% mutate(x=score_median2, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
+marks2 <- genes_dbs %>% filter(score_median_v3 > 0.95) %>% mutate(x=score_median2, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
+pDB + geom_segment(data=marks2, aes(x=x, xend=x, y=y, yend=y+0.2), color="red") + geom_segment(data=marks, aes(x=x, xend=x, y=y, yend=y+0.1), color="black", alpha=0.5)
 # ggsave("database_violins.svg")
 
-# try with histogram
-plotDBScore <- function(geneStr,norm) {
-  CpGscores <- gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^",geneStr,"$"))) %>% pull(score_median)
-  
-  ggplot(prepped_data) + geom_histogram(aes(x=score_median, y=..count../nrow(prepped_data)), binwidth=0.05,fill="lightgray") +
-    xlim(-3,3) + ggtitle(sprintf("%s: CpG scores (%i sites)",geneStr, length(CpGscores))) +
-    xlab("CpG conservation score") + ylab("Freq.") + theme_classic() + theme(legend.position = "none") +
-    #geom_vline(xintercept=CpGscores, color="red", alpha=0.5, size=0.2) +
-    geom_histogram(data=data.frame(score=CpGscores),aes(x=score,y=norm*..count../length(CpGscores)),binwidth=0.05, fill="blue",alpha=0.5) +
-    geom_vline(xintercept=mean(CpGscores), color="blue",linetype="dashed", size=1)
-}
-
-
+# stats
+wilcox.test(x = genes_dbs$score_median2[genes_dbs$group=="COSMIC"], y = genes_dbs$score_median2[genes_dbs$group=="all"], alternative = "greater")
+wilcox.test(x = genes_dbs$score_median2[genes_dbs$group=="AGO"], y = genes_dbs$score_median2[genes_dbs$group=="all"], alternative = "greater")
 ```
-
-\newpage
-\section{Gene Set Conservation Analysis}
-```{r load_gene_sets, include=FALSE}
-# load in the C5 gene sets from MSigDB
-library(GSA)
-gmtfile <- file.path("/Users/kevinmurgas/Documents/Data+ project/EPIC data","c2.cp.v7.1.symbols.gmt")
-genesets <- GSA.read.gmt(gmtfile)
-```
-
-```{r GSCA, echo=FALSE, comment=NA, fig.width=8}
-# make a data.frame for gene sets and scores
-nsets <- length(genesets[[1]])
-GSEA_df <- data.frame(GeneSet=genesets[[2]][1:nsets], score=numeric(nsets),
-                      num_gene = unlist(lapply(genesets[[1]][1:nsets],length)),
-                      num_gene_cut = numeric(nsets))
-
-# have to order all genes first by rank of conservation (conserved genes come first)
-genenames = permed_data$UCSC_RefGene_Name
-ngene = length(genenames)
-
-# reorder by evidence rank
-ind = order(-permed_data$score_median) # use ranked conservation score as evidence
-evidence = seq(ngene,1,-1)
-genenames = genenames[ind]
-
-# plot evidence ranked: permed_data$score_median
-ranks <- permed_data$score_median
-names(ranks) <- permed_data$UCSC_RefGene_Name
-barplot(sort(ranks, decreasing = T))
-
-
-ptm <- proc.time()
-for (iset in 1:nsets) {
-  # take only genes that we have in full gene list
-  set <- unlist(genesets[[1]][iset]) %>% intersect(genenames)
-  GSEA_df$num_gene_cut[iset] = length(set)
-  
-  # skip if num_gene <10 or >500
-  if (length(set)<10 | length(set)>500) {next}
-  
-  # compute running sum (as PDF first)
-  runsum_in = numeric(ngene)
-  runsum_out = numeric(ngene)
-  for (i in 1:ngene) {
-    if (genenames[i] %in% set) {
-      # evidence = permed_data$median, or ranks
-      runsum_in[i] = evidence[i]
-      runsum_out[i] = 0
-    } else {
-      runsum_in[i] = 0
-      runsum_out[i] = 1
-    }
-  }
-  # convert to CDFs
-  runsum_in <- cumsum(runsum_in)/sum(runsum_in)
-  runsum_out <- cumsum(runsum_out)/sum(runsum_out)
-  
-  # compute K-S-like statistic
-  v <- runsum_in - runsum_out
-  score <- max(c(0,v)) + min(c(0,v))
-  GSEA_df$score[iset] <- score
-}
-cat(proc.time()-ptm)
-cat(sprintf("Processed %i genes, %i pathways. Top 50 paths:",ngene,nsets))
-
-# insert significance bootstrapping
-
-# make table of top scores
-GSEA_df %>% arrange(-score) %>%
-  select(score,num_gene,GeneSet) %>%
-  slice(1:50) %>%
-  mutate(GeneSet = gsub('(.{1,90})(\\s|$)', '\\1\n', GeneSet)) %>%
-  gt()
-```
-
 
 ```{r Exit, include=FALSE}
 knit_exit()
 ```
 
+<!-- \newpage -->
+<!-- \section{Gene Set Conservation Analysis} -->
+<!-- Based on Gene Set Enrichment Analysis (GSEA) -->
+<!-- ```{r load_gene_sets, include=FALSE} -->
+<!-- # load in the C5 gene sets from MSigDB -->
+<!-- library(GSA) -->
+<!-- gmtfile <- file.path("/Users/kevinmurgas/Documents/Data+ project/EPIC data","c2.cp.v7.1.symbols.gmt") -->
+<!-- genesets <- GSA.read.gmt(gmtfile) -->
+<!-- ``` -->
 
-``` {r enrich, include=FALSE}
-# expression data
-# downloaded file: E-MTAB-2836-query-results.tpms.tsv
-# source: https://www.ebi.ac.uk/gxa/experiments/E-MTAB-2836/Results
-expression_atlas <- read_tsv(here("data-raw", "E-MTAB-2836-query-results.tpms.tsv"), skip = 4, 
-                             col_types = cols(
-                               .default = col_double(),
-                               `Gene ID` = col_character(),
-                               `Gene Name` = col_character()
-                             ))
+<!-- ```{r GSCA, echo=FALSE, comment=NA, fig.width=8} -->
+<!-- # make a data.frame for gene sets and scores -->
+<!-- nsets <- length(genesets[[1]]) -->
+<!-- GSEA_df <- data.frame(GeneSet=genesets[[2]][1:nsets], score=numeric(nsets), -->
+<!--                       num_gene = unlist(lapply(genesets[[1]][1:nsets],length)), -->
+<!--                       num_gene_cut = numeric(nsets)) -->
 
-# Gene Set Enrichment
-tidy_gsea <- function(genes) {
-  AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, genes, 'ENTREZID', 'SYMBOL') %>%
-    ReactomePA::enrichPathway()
-}
+<!-- # have to order all genes first by rank of conservation (conserved genes come first) -->
+<!-- genenames = permed_data$UCSC_RefGene_Name -->
+<!-- ngene = length(genenames) -->
 
-enrich_sigmaP <- permed_data %>%
-  #filter(sigmaP_v3 < quantile(sigmaP_v3, 0.05, na.rm = TRUE)) %>%
-  filter(sigmaP_v3 < 0.05) %>%
-  pull(UCSC_RefGene_Name) %>% tidy_gsea()
-enrich_sigmaPT <- permed_data %>%
-  #filter(sigmaPT_v3 < quantile(sigmaPT_v3, 0.05, na.rm = TRUE)) %>%
-  filter(sigmaPT_v3 < 0.05) %>%
-  pull(UCSC_RefGene_Name) %>% tidy_gsea()
-enrich_sigmaT <- permed_data %>%
-  #filter(sigmaT_v3 < quantile(sigmaT_v3, 0.05, na.rm = TRUE)) %>%
-  filter(sigmaT_v3 < 0.05) %>%
-  pull(UCSC_RefGene_Name) %>% tidy_gsea()
-enrich_score_median <- permed_data %>%
-  #filter(score_median_v3 > quantile(score_median_v3, 0.95, na.rm = TRUE)) %>%
-  filter(score_median_v3 > 0.95) %>%
-  pull(UCSC_RefGene_Name) %>% tidy_gsea()
-```
+<!-- # reorder by evidence rank -->
+<!-- ind = order(-permed_data$score_median) # use ranked conservation score as evidence -->
+<!-- evidence = seq(ngene,1,-1) -->
+<!-- genenames = genenames[ind] -->
+
+<!-- # plot evidence ranked: permed_data$score_median -->
+<!-- ranks <- permed_data$score_median -->
+<!-- names(ranks) <- permed_data$UCSC_RefGene_Name -->
+<!-- barplot(sort(ranks, decreasing = T)) -->
+
+
+<!-- ptm <- proc.time() -->
+<!-- for (iset in 1:nsets) { -->
+<!--   # take only genes that we have in full gene list -->
+<!--   set <- unlist(genesets[[1]][iset]) %>% intersect(genenames) -->
+<!--   GSEA_df$num_gene_cut[iset] = length(set) -->
+
+<!--   # skip if num_gene <10 or >500 -->
+<!--   if (length(set)<10 | length(set)>500) {next} -->
+
+<!--   # compute running sum (as PDF first) -->
+<!--   runsum_in = numeric(ngene) -->
+<!--   runsum_out = numeric(ngene) -->
+<!--   for (i in 1:ngene) { -->
+<!--     if (genenames[i] %in% set) { -->
+<!--       # evidence = permed_data$median, or ranks -->
+<!--       runsum_in[i] = evidence[i] -->
+<!--       runsum_out[i] = 0 -->
+<!--     } else { -->
+<!--       runsum_in[i] = 0 -->
+<!--       runsum_out[i] = 1 -->
+<!--     } -->
+<!--   } -->
+<!--   # convert to CDFs -->
+<!--   runsum_in <- cumsum(runsum_in)/sum(runsum_in) -->
+<!--   runsum_out <- cumsum(runsum_out)/sum(runsum_out) -->
+
+<!--   # compute K-S-like statistic -->
+<!--   v <- runsum_in - runsum_out -->
+<!--   score <- max(c(0,v)) + min(c(0,v)) -->
+<!--   GSEA_df$score[iset] <- score -->
+<!-- } -->
+<!-- cat(proc.time()-ptm) -->
+<!-- cat(sprintf("Processed %i genes, %i pathways. Top 50 paths:",ngene,nsets)) -->
+
+<!-- # insert significance bootstrapping -->
+
+<!-- # make table of top scores -->
+<!-- GSEA_df %>% arrange(-score) %>% -->
+<!--   select(score,num_gene,GeneSet) %>% -->
+<!--   slice(1:50) %>% -->
+<!--   mutate(GeneSet = gsub('(.{1,90})(\\s|$)', '\\1\n', GeneSet)) %>% -->
+<!--   gt() -->
+<!-- ``` -->
 
 \newpage
 \subsection{Gene-average Parameter Distributions}
@@ -722,371 +672,4 @@ pP1 <- ggplot(gene_summary) + geom_point(aes(x=n,y=score_median), alpha=0.01) + 
 p_all <- ggarrange(pM,pB,pE,pP,pPT,pT,pP1,hjust=0,nrow=3,ncol=3)
 print(p_all)
 rm(pM,pB,pE,pP,pPT,pT,pP1)
-```
-
-\subsection{Figure 2: Bootstrapping}
-```{r Fig2, echo=FALSE, warning=FALSE, fig.height=4, comment=NA}
-# Figure 2
-permed_data %>%
-  pivot_longer(dplyr::matches("1|3")) %>%
-  separate(name, into = c("type", "method"), sep = "_v") %>%
-  mutate(method = factor(method, c("1", "3"), c("Naive bootstrap", "Adjusted bootstrap")),
-         type = factor(type, c("sigmaP","sigmaPT","sigmaT"), c("SigmaP","SigmaPT","SigmaT"))) %>%
-  drop_na() %>%
-  ggplot(aes(value, fill = type)) +
-  geom_histogram(bins = 50, color = "grey30") +
-  facet_grid(method~type, scales = "free") +
-  theme_minimal() +
-  labs(x = "p-value",
-       y = "Number of genes",
-       title = NULL,
-       caption = "Figure 2A: Distribution of boot-strapping p-values for genes as a function of sigma level and bootstrap method.")  +
-  theme(legend.position = "none") +
-  scale_color_brewer(palette = "Set2") +
-  scale_fill_brewer(palette = "Set2")
-
-cat("***")
-permed_data %>%
-  pivot_longer(dplyr::matches("1|3")) %>%
-  separate(name, into = c("type", "method"), sep = "_v") %>%
-  mutate(method = factor(method, c("1", "3"), c("Naive bootstrap", "Adjusted bootstrap")),
-         type = factor(type, c("score_median"), c("Score_median"))) %>%
-  drop_na() %>%
-  ggplot(aes(value, fill = type)) +
-  geom_histogram(bins = 50, color = "grey30") +
-  facet_grid(method~type, scales = "free") +
-  theme_minimal() +
-  labs(x = "p-value",
-       y = "Number of genes",
-       title = NULL,
-       caption = "Figure 2B: Distribution of boot-strapping p-values for genes as a function of conservation score and bootstrap method.")  +
-  theme(legend.position = "none") +
-  scale_color_brewer(palette = "Set2") +
-  scale_fill_brewer(palette = "Set2")
-```
-
-\newpage
-\subsection{Figure 3: Reactome Pathway Enrichment Analysis}
-Enrichment defined from the group of genes <5th percentile of each sigma, or >95th percentile of conservation score.
-```{r Fig3, echo=FALSE, fig.height=3.5, comment=NA}
-cat("Number of enrichment pathways (sigmas):")
-c(sigmaP = length(enrich_sigmaP$Description),
-  sigmaPT = length(enrich_sigmaPT$Description),
-  sigmaT = length(enrich_sigmaT$Description)) %>%
-  sort()
-
-list(
-  sigmaP = enrich_sigmaP$Description,
-  sigmaPT = enrich_sigmaPT$Description,
-  sigmaT = enrich_sigmaT$Description
-) %>%
-  UpSetR::fromList() %>%
-  UpSetR::upset(sets.bar.color = RColorBrewer::brewer.pal(3, "Set2")[c(3, 2, 1)])
-grid::grid.text("Figure 3A: Frequency of overlap between pathways that are called \nas most conserved for each hierarchical variance.", x=0.65, y=0.05, gp=grid::gpar(fontsize=10))
-
-cat("Number of enrichment pathways (probs):")
-c(score_median = length(enrich_score_median$Description)) %>%
-  sort()
-
-list(
-  score_median = enrich_score_median$Description
-) %>%
-  UpSetR::fromList() %>%
-  UpSetR::upset(sets.bar.color = RColorBrewer::brewer.pal(3, "Set2")[c( 1)])
-grid::grid.text("Figure 3B: Frequency of overlap between pathways that are called \nas most conserved for each conservation score.", x=0.65, y=0.05, gp=grid::gpar(fontsize=10))
-```
-
-\newpage
-\subsection{Figure 4: Pathway Enrichment Network}
-```{r Fig4, echo=FALSE, message=FALSE, fig.height=2.5}
-# Figure 4
-cat("sigmaP:")
-ggg <- enrich_sigmaP %>%
-  ReactomePA::emapplot(showCategory = 30, layout = "graphopt") +
-  labs(caption = "Figure 4A: Relationship between pathways that are called as conserved based on sigmaP.", title = NULL)
-
-ggg$layers <- ggg$layers[1:2]
-
-ggg + coord_flip() + 
-  ggraph::geom_node_label(aes_(label = ~name), repel = TRUE, size = 2) +
-  scale_color_gradientn(colors = "black") +
-  guides(color = "none", size = "none")
-
-#ggsave(filename = here("figures", "figure-4.png"), width = 7, dpi = 320, height = 4.326)
-
-# sigmaPT
-cat("sigmaPT:")
-ggg <- enrich_sigmaPT %>%
-  ReactomePA::emapplot(showCategory = 30, layout = "graphopt") +
-  labs(caption = "Figure 4B: Relationship between pathways that are called as conserved based on sigmaPT.", title = NULL)
-
-ggg$layers <- ggg$layers[1:2]
-ggg + coord_flip() + 
-  ggraph::geom_node_label(aes_(label = ~name), repel = TRUE, size = 2) +
-  scale_color_gradientn(colors = "black") +
-  guides(color = "none", size = "none")
-
-# sigmaT
-cat("sigmaT:")
-ggg <- enrich_sigmaT %>%
-  ReactomePA::emapplot(showCategory = 30, layout = "graphopt") +
-  labs(caption = "Figure 4C: Relationship between pathways that are called as conserved based on sigmaT.", title = NULL)
-
-ggg$layers <- ggg$layers[1:2]
-ggg + coord_flip() + 
-  ggraph::geom_node_label(aes_(label = ~name), repel = TRUE, size = 2) +
-  scale_color_gradientn(colors = "black") +
-  guides(color = "none", size = "none")
-```
-
-\newpage
-```{r Fig4DEF, echo=FALSE, message=FALSE, fig.height=2.5}
-# score_median
-cat("score_median")
-ggg <- enrich_score_median %>%
-  ReactomePA::emapplot(showCategory = 30, layout = "graphopt") +
-  labs(caption = "Figure 4D: Relationship between pathways that are called as conserved based on score_median.", title = NULL)
-ggg$layers <- ggg$layers[1:2]
-ggg + coord_flip() + 
-  ggraph::geom_node_label(aes_(label = ~name), repel = TRUE, size = 2) +
-  scale_color_gradientn(colors = "black") +
-  guides(color = "none", size = "none")
-
-```
-
-
-
-<!-- \newpage -->
-<!-- \section{Patient-specific analysis} -->
-<!-- Basic overview: using a specified number of genes (here 100), take top genes (here using score_prob bootstrapping percentiles) to select a "gene signature" of sorts. Then for each patient, calculate the mean pair-wise distance within the individual patients' tumor samples. Method 1 is these raw values, method 2 normalizes by the mean PWD of all normal samples. Method 3 just examines the overall mean PWD for all tumor samples, normalized by mean PWD of all normal. -->
-
-<!-- ```{r PatientPWD, echo=FALSE, message=FALSE, warning=FALSE, comment=NA, fig.height=9, fig.width=7} -->
-<!-- library(gtools) -->
-
-<!-- # pull out all samples beta values -->
-<!-- all_beta <- FullAnnotation[,10:57] -->
-
-<!-- # extract patient and tissue labels -->
-<!-- patientLabel <- substr(colnames(all_beta), 1, 1) -->
-<!-- patientLabel[10:12] <- "K*" -->
-<!-- tissueLabel <- substr(colnames(all_beta), 2, 2) -->
-<!-- tissueLabel[!(tissueLabel %in% "N")] <- "T"   #replace A/B/D/M with T -->
-
-<!-- pats = patientLabel %>% sort %>% unique -->
-<!-- npat = length(pats) -->
-
-<!-- enrichedGenes <- permed_data %>% filter(score_prob_v3 < quantile(score_prob_v3, 0.05, na.rm = TRUE)) %>% -->
-<!--   select(UCSC_RefGene_Name, score_prob, score_prob_v3, n) %>% -->
-<!--   rename(Gene=UCSC_RefGene_Name, Pctile=score_prob_v3) -->
-
-<!-- #ngene = 70 # using top N genes -->
-<!-- #genes = enrichedGenes %>% top_n(-ngene,Pctile) %>% pull(Gene) -->
-<!-- #genes = genes[1:ngene] -->
-
-<!-- genes = enrichedGenes$Gene -->
-<!-- ngene = length(genes) -->
-
-<!-- pwd <- function(x) { -->
-<!--   mean(dist(x)) -->
-<!-- } -->
-<!-- pwd2 <- function(x) { -->
-<!--   abs(diff(x)) -->
-<!-- } -->
-
-<!-- signature_mat1 = matrix(,ngene,npat) # raw tumor pwd -->
-<!-- signature_mat2 = matrix(,ngene,npat) # tumor pwd normalized by all normal pwd -->
-<!-- for (igene in 1:ngene) { -->
-<!--   # each gene, get gene inds, calculate PWD for the tumor samples -->
-<!--   geneind = grep(genes[igene], FullAnnotation$UCSC_RefGene_Name) -->
-
-<!--   # calculate PWD of each tumor -->
-<!--   tum_pwd <- numeric(npat) -->
-<!--   for (ipat in 1:npat) { -->
-<!--     # each patient, get tumor sample inds -->
-<!--     patind <- which(patientLabel == pats[ipat] & tissueLabel == "T") -->
-<!--     tum_pwd[ipat] <- all_beta[geneind,patind] %>% logit %>% apply(1,pwd2) %>% mean -->
-<!--   } -->
-
-<!--   # calculate PWD of all normal -->
-<!--   norm_pwd <- all_beta[geneind,tissueLabel == "N"] %>% logit %>% apply(1, pwd) %>% mean -->
-
-<!--   signature_mat1[igene,] = tum_pwd -->
-<!--   signature_mat2[igene,] = tum_pwd/norm_pwd -->
-<!-- } -->
-
-<!-- #cat("  \n\\newline  \nMethod 1 - raw intratumor PWD within each patient") -->
-<!-- #signature_mat1 %>% as_tibble %>% `colnames<-`(pats) %>% gather %>% -->
-<!-- #  mutate(gene=rep(genes,npat)) %>% rename(Patient=key,PWD=value) %>% -->
-<!-- #  ggplot + geom_tile(aes(y=gene,x=Patient,fill=PWD)) + ylab(paste0(ngene," genes")) + -->
-<!-- #  theme(axis.text.y = element_blank()) -->
-<!-- #cat("  \n\\newline  \nMethod 2 - intratumor PWD normalized by all normal PWD") -->
-<!-- #signature_mat2 %>% as_tibble %>% `colnames<-`(pats) %>% gather %>% -->
-<!-- #  mutate(gene=rep(genes,npat)) %>% rename(Patient=key,PWD=value) %>% -->
-<!-- #  ggplot + geom_tile(aes(y=gene,x=Patient,fill=PWD)) + ylab(paste0(ngene," genes")) + -->
-<!-- #  theme(axis.text.y = element_blank()) -->
-<!-- #cat("  \n\\newline  \nMethod 3 - all tumor PWD normalized by all normal PWD") -->
-<!-- #signature_mat3 %>% as_tibble %>% mutate(gene=genes) %>% rename(PWD=V1) %>% -->
-<!-- #  ggplot + geom_tile(aes(y=gene,x=1,fill=PWD)) + ylab(paste0(ngene," genes")) + -->
-<!-- #  theme(axis.text.y = element_blank()) -->
-
-<!-- library(pheatmap) -->
-<!-- library(dendsort) -->
-
-<!-- cat("  \n\\newline  \nMethod 1 - raw intratumor PWD within each patient") -->
-<!-- df1 = as.data.frame(signature_mat1) -->
-<!-- rownames(df1) <- genes -->
-<!-- colnames(df1) <- pats -->
-<!-- sort_hclust <- function(...) as.hclust(dendsort(as.dendrogram(...))) -->
-<!-- mat_cluster_cols <- sort_hclust(hclust(dist(t(df1)))) -->
-<!-- mat_cluster_rows <- sort_hclust(hclust(dist(df1))) -->
-<!-- pheatmap( -->
-<!--   mat=df1, -->
-<!--   cluster_cols = mat_cluster_cols, -->
-<!--   cluster_rows = mat_cluster_rows, -->
-<!--   show_rownames = FALSE, -->
-<!--   show_colnames = TRUE, -->
-<!--   main = "Top 1118 Genes: Tumor PWD" -->
-<!-- ) -->
-
-<!-- cat("  \n\\newline  \nMethod 2 - intratumor PWD normalized by all normal PWD") -->
-<!-- df1 = as.data.frame(signature_mat2) -->
-<!-- rownames(df1) <- genes -->
-<!-- colnames(df1) <- pats -->
-<!-- sort_hclust <- function(...) as.hclust(dendsort(as.dendrogram(...))) -->
-<!-- mat_cluster_cols <- sort_hclust(hclust(dist(t(df1)))) -->
-<!-- mat_cluster_rows <- sort_hclust(hclust(dist(df1))) -->
-<!-- pheatmap( -->
-<!--   mat=df1, -->
-<!--   cluster_cols = mat_cluster_cols, -->
-<!--   cluster_rows = mat_cluster_rows, -->
-<!--   show_rownames = FALSE, -->
-<!--   show_colnames = TRUE, -->
-<!--   main = "Top 1118 Genes: Tumor PWD" -->
-<!-- ) -->
-<!-- ``` -->
-
-\newpage
-\section{Appendix: Enrichment Gene/Pathway Lists}
-\subsection{A1: SigmaP}
-Genes are selected with cutoff <5th percentile (adjusted bootstrap), showing top 30 genes/pathways
-```{r App_sigmaP, echo=FALSE, fig.fullwidth=TRUE, comment=NA, message=FALSE}
-enrichedGenes <- permed_data %>%
-  select(UCSC_RefGene_Name, sigmaP, sigmaP_v3, n) %>%
-  rename(Gene=UCSC_RefGene_Name, Pctile=sigmaP_v3) %>%
-  filter(Pctile < quantile(Pctile, 0.05, na.rm = TRUE)) %>%
-  arrange(Pctile)
-
-enrichedPaths <- tibble(Pathway = enrich_sigmaP$Description, ngenes = enrich_sigmaP$Count, padj = enrich_sigmaP$p.adjust) %>% arrange(padj)
-
-ngene <- dim(enrichedGenes)[1]
-npath <- length(enrich_sigmaP$Description)
-
-cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath))
-
-nshow = 30
-if (ngene > nshow) {
-  enrichedGenes <- enrichedGenes[1:nshow,]
-}
-if (npath > nshow) {
-  enrichedPaths <- enrichedPaths[1:nshow,]
-}
-
-library(pander)
-enrichedGenes %>% pander()
-
-cat("SigmaP top 30 enriched paths:  \n")
-enrichedPaths %>% pander()
-```
-
-\newpage
-\subsection{A2: SigmaPT}
-Genes are selected with cutoff <5th percentile (adjusted bootstrap), showing top 30 genes/pathways
-```{r App_sigmaPT, echo=FALSE, comment=NA, message=FALSE}
-enrichedGenes <- permed_data %>%
-  select(UCSC_RefGene_Name, sigmaPT, sigmaPT_v3, n) %>%
-  rename(Gene=UCSC_RefGene_Name, Pctile=sigmaPT_v3) %>%
-  filter(Pctile < quantile(Pctile, 0.05, na.rm = TRUE)) %>%
-  arrange(Pctile)
-
-enrichedPaths <- tibble(Pathway = enrich_sigmaPT$Description, ngenes = enrich_sigmaPT$Count, padj = enrich_sigmaPT$p.adjust) %>% arrange(padj)
-
-ngene <- dim(enrichedGenes)[1]
-npath <- length(enrich_sigmaPT$Description)
-
-cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath))
-
-nshow = 30
-if (ngene > nshow) {
-  enrichedGenes <- enrichedGenes[1:nshow,]
-}
-if (npath > nshow) {
-  enrichedPaths <- enrichedPaths[1:nshow,]
-}
-
-enrichedGenes %>% pander()
-
-cat("\nSigmaPT top 30 enriched paths:  \n")
-enrichedPaths %>% pander()
-```
-
-\newpage
-\subsection{A3: SigmaT}
-Genes are selected with cutoff <5th percentile (adjusted bootstrap), showing top 30 genes/pathways
-```{r App_sigmaT, echo=FALSE, comment=NA, message=FALSE}
-enrichedGenes <- permed_data %>%
-  select(UCSC_RefGene_Name, sigmaT, sigmaT_v3, n) %>%
-  rename(Gene=UCSC_RefGene_Name, Pctile=sigmaT_v3) %>%
-  filter(Pctile < quantile(Pctile, 0.05, na.rm = TRUE)) %>%
-  arrange(Pctile)
-
-enrichedPaths <- tibble(Pathway = enrich_sigmaT$Description, ngenes = enrich_sigmaT$Count, padj = enrich_sigmaT$p.adjust) %>% arrange(padj)
-
-ngene <- dim(enrichedGenes)[1]
-npath <- length(enrich_sigmaT$Description)
-
-cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath))
-
-nshow = 30
-if (ngene > nshow) {
-  enrichedGenes <- enrichedGenes[1:nshow,]
-}
-if (npath > nshow) {
-  enrichedPaths <- enrichedPaths[1:nshow,]
-}
-
-enrichedGenes %>% pander()
-
-cat("SigmaT top 30 enriched paths:  \n")
-enrichedPaths %>% pander()
-```
-
-\newpage
-\subsection{A4: Score Median}
-Genes are selected with cutoff >95th percentile (adjusted bootstrap), showing top 50 genes/pathways
-```{r App_score_median, echo=FALSE, comment=NA, message=FALSE}
-enrichedGenes <- permed_data %>% 
-  select(UCSC_RefGene_Name, score_median, score_median_v3, n) %>%
-  rename(Gene=UCSC_RefGene_Name, Score_median=score_median, Pctile=score_median_v3) %>%
-  filter(Pctile > quantile(Pctile, 0.95, na.rm = TRUE)) %>%
-  arrange(Pctile)
-
-enrichedPaths <- tibble(Pathway = enrich_score_median$Description, ngenes = enrich_score_median$Count, padj = enrich_score_median$p.adjust) %>% arrange(padj)
-
-ngene <- dim(enrichedGenes)[1]
-npath <- length(enrich_score_median$Description)
-
-cat(paste0("Total number of genes: ", ngene, "     Number of enrichment pathways: ", npath))
-
-nshow = 50
-if (ngene > nshow) {
-  enrichedGenes <- enrichedGenes[1:nshow,]
-}
-if (npath > nshow) {
-  enrichedPaths <- enrichedPaths[1:nshow,]
-}
-
-enrichedGenes %>% pander()
-
-cat("Score_median top 50 enriched paths:  \n")
-enrichedPaths %>% pander()
 ```

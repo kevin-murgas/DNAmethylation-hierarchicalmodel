@@ -53,7 +53,7 @@ site <- function (ind) {
   
   work <-
     data.frame(
-      beta = logit(t(temp[indices])),
+      M = logit(t(temp[indices])),
       patient = patientLabel,
       tissue = tissueLabel,
       side = sideLabel,
@@ -66,11 +66,11 @@ site <- function (ind) {
 # Using Model with TCGA priors (previously model 3)
 stanfit_model <- function (dataset) {
   stanDat <- list(
-    pID = as.integer(factor(dataset$patient)),
-    tInd = dataset$tInd,
     N = nrow(dataset),
     P = nlevels(dataset$patient),
-    y = dataset[, 1]
+    y = dataset[, 1],
+    tInd = dataset$tInd,
+    pID = as.integer(factor(dataset$patient))
   )
   stanFit <- 
     stan(
@@ -104,7 +104,7 @@ mu_C <-
     n_eff = numeric(nsites),
     Rhat = numeric(nsites)
   )
-betaT_C <- mu_C
+nu_C <- mu_C
 sigmaP_C <- mu_C
 sigmaPT_C <- mu_C
 sigmaT_C <- mu_C
@@ -123,7 +123,7 @@ stanDat1 <- list(
   P = nlevels(data1$patient),
   y = data1[, 1]
 )
-emptyFit <- stan(file="model_TCGApriors_nosigmae.stan", data = stanDat1, chains = 0)
+emptyFit <- stan(file="model_TCGApriors.stan", data = stanDat1, chains = 0)
 
 # run in parallel via doParallel
 cl <- makeCluster(numCPUs)
@@ -142,16 +142,16 @@ parData <- foreach(i = iter(1:nsites), .combine = 'comb', .multicombine = TRUE, 
   data <- site(i)
   stanFit <- stanfit_model(data)
   
-  # take summary values for first 6 params (mu, betaT, sigmas x4) and last param (lp__)
-  fitSumm <- summary(stanFit)$summary[c(1:6,97), mInd]
+  # take summary values for first 6 params (mu, nu, sigmas x4) and last param (lp__)
+  fitSumm <- summary(stanFit)$summary[c(1:6,dim(summary(stanFit)$summary)[1]), mInd]
   
-  # compute posterior log-ratio: log(sigmaP/sigmaT), take integral>0, mean, median
+  # compute posterior log-ratio: log2(sigmaP/sigmaT), take integral>0, mean, median
   posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_t"))
-  logPTratio <- log(posterior[,1]/posterior[,2])
-  prob1 <- c(mean(logPTratio > 0), mean(logPTratio), median(logPTratio))
-  fitSumm <- rbind(fitSumm,prob1)
+  logPTratio <- log2(posterior[,1]/posterior[,2])
+  CpGscore <- c(mean(logPTratio > 0), mean(logPTratio), median(logPTratio))
+  fitSumm <- rbind(fitSumm,CpGscore)
   
-  rm(data, stanFit, posterior, logPTratio, prob1)
+  rm(data, stanFit, posterior, logPTratio, CpGscore)
   gc()
   
   split(fitSumm, rownames(fitSumm))
@@ -163,16 +163,16 @@ print("All sites complete, saving data.")
 sink()
 
 mu_C[,] <- parData$mu
-betaT_C[,] <- parData$betaT
+nu_C[,] <- parData$nu
 sigmaP_C[,] <- parData$sigma_p
 sigmaPT_C[,] <- parData$sigma_pt
 sigmaT_C[,] <- parData$sigma_t
 sigmaE_C[,] <- parData$sigma_e
 lp_C[,] <- parData$lp__
-prob1 <- parData$prob1[,1:3]
+CpGscore <- parData$CpGscore[,1:3]
 rm(parData)
 gc()
 
 print(paste("Completed run, now saving"))
 # save data
-save(mu_C, betaT_C, sigmaP_C, sigmaPT_C, sigmaT_C, sigmaE_C, lp_C, prob1, file = out.file)
+save(mu_C, nu_C, sigmaP_C, sigmaPT_C, sigmaT_C, sigmaE_C, lp_C, CpGscore, file = out.file)

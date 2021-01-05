@@ -330,23 +330,9 @@ enrich_sigmaT <- permed_data %>%
   #filter(sigmaT_v3 < quantile(sigmaT_v3, 0.05, na.rm = TRUE)) %>%
   filter(sigmaT_v3 < 0.05) %>%
   pull(UCSC_RefGene_Name) %>% tidy_gsea()
-#enrich_score_prob <- permed_data %>%
-#  filter(score_prob_v3 > quantile(score_prob_v3, 0.95, na.rm = TRUE)) %>%
-#  pull(UCSC_RefGene_Name) %>% tidy_gsea()
-#enrich_score_mean <- permed_data %>%
-#  filter(score_mean_v3 > quantile(score_mean_v3, 0.95, na.rm = TRUE)) %>%
-#  pull(UCSC_RefGene_Name) %>% tidy_gsea()
 enrich_score_median <- permed_data %>%
   #filter(score_median_v3 > quantile(score_median_v3, 0.95, na.rm = TRUE)) %>%
   filter(score_median_v3 > 0.95) %>%
-  pull(UCSC_RefGene_Name) %>% tidy_gsea()
-enrich_score_median2 <- permed_data %>%
-  #filter(score_median2_v3 > quantile(score_median2_v3, 0.95, na.rm = TRUE)) %>%
-  filter(score_median2_v3 > 0.95) %>%
-  pull(UCSC_RefGene_Name) %>% tidy_gsea()
-enrich_score_reg <- permed_data %>%
-  #filter(score_reg_v3 > quantile(score_reg_v3, 0.95, na.rm = TRUE)) %>%
-  filter(score_reg_v3 > 0.95) %>%
   pull(UCSC_RefGene_Name) %>% tidy_gsea()
 ```
 

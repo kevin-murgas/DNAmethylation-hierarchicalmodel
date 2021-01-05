@@ -25,6 +25,7 @@ load("myFA_bulkonly.Rdata")
 # randomly select 5 sites in 1-866091
 #siteInds <- sample(1:866091,5)
 siteInds <- c(525490, 570532, 827025, 287316, 854143)
+siteInds <- 124022
 nsites <- length(siteInds)
 
 
@@ -46,13 +47,13 @@ site <- function (ind) {
   
   work <-
     data.frame(
-      beta = logit(t(temp[indices])),
+      M = logit(t(temp[indices])),
       patient = patientLabel,
       tissue = tissueLabel,
       side = sideLabel,
       tInd = tumorIndicator
     )
-  colnames(work)[1] <- "beta"
+  colnames(work)[1] <- "M"
   return(work)
 }
 
@@ -61,11 +62,11 @@ stanfit_model <- function (dataset) {
   stanDat <- list(
     N = nrow(dataset),
     P = nlevels(dataset$patient),
-    pID = as.integer(factor(dataset$patient)),
+    y = dataset[, 1],
     tInd = dataset$tInd,
-    y = dataset[, 1]
+    pID = as.integer(factor(dataset$patient))
   )
-  stanFit <-
+  stanFit <- 
     stan(
       fit = emptyFit,
       warmup = 200,
@@ -76,7 +77,7 @@ stanfit_model <- function (dataset) {
       refresh = 0,
       seed=123
     )
-  return(stanFit = stanFit)
+  return(stanFit=stanFit)
 }
 
 # Plot raw data and fits
@@ -124,7 +125,7 @@ postplot <- function(stanFit) {
 ### CODE ###
 
 # check for model_TCGApriors.rds, must add to prevent crash
-checkFile <- "model_TCGApriors2.rds"
+checkFile <- "model_TCGApriors.rds"
 if (file.exists(checkFile)) {
   file.remove(checkFile)
   print("caught one!") 
@@ -139,7 +140,7 @@ stanDat1 <- list(
   P = nlevels(data1$patient),
   y = data1[, 1]
 )
-emptyFit <- stan(file="model_TCGApriors2.stan", data = stanDat1, chains = 0)
+emptyFit <- stan(file="model_TCGApriors.stan", data = stanDat1, chains = 0)
 
 # # run in parallel via doParallel
 # # want to collect data of random effect coefficients (bcd), fixed effects (betaT,mu), and sigmas
@@ -159,9 +160,8 @@ emptyFit <- stan(file="model_TCGApriors2.stan", data = stanDat1, chains = 0)
 #   fitSumm <- summary(stanFit)$summary[71:76, mInd] # pulls betaT, mu, sigmaE,P,PT,T
 # 
 #   posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_t"))
-#   PTratio <- log(posterior[,1]/posterior[,2])
-#   prob <- sum(PTratio > 0)/length(PTratio)
-#   fitSumm <- rbind(fitSumm,rep(prob,length(mInd)))
+#   CpGscore <- log2(posterior[,1]/posterior[,2])
+#   fitSumm <- rbind(fitSumm,rep(median(CpGscore),length(mInd)))
 # 
 #   rm(data,stanFit)
 #   gc()
@@ -177,7 +177,7 @@ emptyFit <- stan(file="model_TCGApriors2.stan", data = stanDat1, chains = 0)
 # sigmaP_C[,] <- parData$'4'
 # sigmaPT_C[,] <- parData$'5'
 # sigmaT_C[,] <- parData$'6'
-# PTprob <- parData$'7'[,1]
+# CpGscore_C <- parData$'7'[,1]
 # #rm(parData)
 # gc()
 
@@ -190,69 +190,50 @@ for(i in 1:nsites) {
   
   data <- site(siteInds[i])
   stanFit <- stanfit_model(data)
-  print(summary(stanFit)$summary[c(1:6,97),c(1, 2, 6, 9, 10)])
-  # # plot beta and fits at this site for all patients, using mean estimates for b and c coefficients
-  # p1 <- fitplot(data, stanFit)
-  # 
-  # # plot posteriors for this site
-  # # variables: mu, betaT, sigma_p, sigma_pt, sigma_t, sigma_e, lp__
-  # posterior <- as.array(stanFit)
-  # p2 <- mcmc_areas(
-  #   posterior, 
-  #   pars = c("mu","betaT"),
-  #   prob = 0.8, # 80% intervals
-  #   prob_outer = 0.95, 
-  #   point_est = "mean"
-  # ) + ggtitle(paste("Site",siteInds[i],": Fixed Effect Posteriors"))
-  # p3 <- mcmc_areas(
-  #   posterior, 
-  #   pars = c("sigma_p","sigma_t","sigma_pt","sigma_e"),
-  #   prob = 0.8, # 80% intervals
-  #   prob_outer = 0.95, 
-  #   point_est = "mean"
-  # ) + ggtitle(paste("Site",siteInds[i],": Sigma Posteriors"))
-  # 
-  # p4 <- traceplot(stanFit,pars=c("mu","betaT"),inc_warmup=TRUE)
-  # p5 <- traceplot(stanFit,pars=c("sigma_e", "sigma_p", "sigma_t","sigma_pt"),inc_warmup=TRUE)
-  # 
-  # print(p1)
-  # print(p2)
-  # print(p3)
-  # print(p4)
-  # print(p5)
+  
+  # take summary values for first 6 params (mu, nu, sigmas x4) and last param (lp__)
+  fitSumm <- summary(stanFit)$summary[c(1:6,dim(summary(stanFit)$summary)[1]), c(1, 2, 6, 9, 10)]
+  
+  # compute posterior log-ratio: log2(sigmaP/sigmaT), take integral>0, mean, median
+  posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_t"))
+  logPTratio <- log2(posterior[,1]/posterior[,2])
+  CpGscore <- c(mean(logPTratio > 0), mean(logPTratio), median(logPTratio))
+  fitSumm <- rbind(fitSumm,CpGscore)
+  
+  # print summary of parameters (mu, nu, sigmas, lp) for this site
+  print(summary(stanFit)$summary[c(1:6,dim(summary(stanFit)$summary)[1]),c(1, 2, 6, 9, 10)])
+  
+  # plot beta and fits at this site for all patients, using mean estimates for b and c coefficients
+  p1 <- fitplot(data, stanFit)
+
+  # plot posteriors for this site
+  # variables: mu, nu, sigma_p, sigma_pt, sigma_t, sigma_e, lp__
+  posterior <- as.array(stanFit)
+  p2 <- mcmc_areas(
+    posterior,
+    pars = c("mu","nu"),
+    prob = 0.8, # 80% intervals
+    prob_outer = 0.95,
+    point_est = "mean"
+  ) + ggtitle(paste("Site",siteInds[i],": Fixed Effect Posteriors"))
+  p3 <- mcmc_areas(
+    posterior,
+    pars = c("sigma_p","sigma_t","sigma_pt","sigma_e"),
+    prob = 0.8, # 80% intervals
+    prob_outer = 0.95,
+    point_est = "mean"
+  ) + ggtitle(paste("Site",siteInds[i],": Sigma Posteriors"))
+
+  p4 <- traceplot(stanFit,pars=c("mu","nu"),inc_warmup=TRUE)
+  p5 <- traceplot(stanFit,pars=c("sigma_e", "sigma_p", "sigma_pt","sigma_t"),inc_warmup=TRUE)
+
+  print(p1)
+  print(p2)
+  print(p3)
+  print(p4)
+  print(p5)
+  
 }
 proc.time() - ptm
 
 print(paste("Completed run on sites:", paste(siteInds, collapse=" ")))
-
-###### TEST #####
-
-mInd <- c(1, 2, 6, 9, 10)
-# testing parallel run with computing logratio posteriors
-cl <- makeCluster(detectCores()/2)
-registerDoParallel(cl)
-print(paste("Cores registered:",getDoParWorkers()))
-print(paste("Backend type:",getDoParName()))
-print("Starting foreach loop")
-ptm <- proc.time()
-parData <- foreach(i = iter(1:nsites), .combine = 'comb', .multicombine = TRUE, .packages=c("gtools","rstan")) %dopar% {
-  
-  data <- site(i)
-  stanFit <- stanfit_model(data)
-  
-  # take summary values for first 6 params (mu, betaT, sigmas x4) and last param (lp__)
-  fitSumm <- summary(stanFit)$summary[c(1:6,97), mInd]
-  
-  # compute posterior sums: 1=sum(log(sigmaP/sigmaT) > 0); 2=sum(log( (sigmaPT^2+sigmaT^2)/(2*sigmaP^2) ) > 0)
-  posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_pt","sigma_t"))
-  prob1 <- mean( log(posterior[,1]/posterior[,3]) > 0)
-  prob2 <- mean( log( (posterior[,2]^2 + posterior[,3]^2)/(2*posterior[,1]^2) ) > 0)
-  fitSumm <- rbind(fitSumm,prob1,prob2)
-  
-  rm(data, stanFit, posterior, prob1, prob2)
-  gc()
-  
-  split(fitSumm, rownames(fitSumm))
-}
-proc.time() - ptm
-stopCluster(cl)
