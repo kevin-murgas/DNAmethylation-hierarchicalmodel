@@ -10,7 +10,7 @@ library(reshape2)
 ### LOADING FOR STAN MODEL RESULTS
 
 # Set working directory to normal data wd then folder with Results files from StanCParallel.R on all sites
-setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data/Stan Results Archive/FinalRuns/ResultsTCGA_relaxgamma5")
+setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data/Stan Results Archive/FinalRuns/ResultsTCGA_gamma")
 
 mu_full <-
   data.frame(
@@ -54,5 +54,5 @@ for (i in filesPresent) {
   CpGscore_full[inds, ] <- CpGscore
 }
 save(mu_full, nu_full, sigmaP_full, sigmaT_full, sigmaPT_full, sigmaE_full,
-      lp_full, CpGscore_full, file = "FullResultsTCGA_relaxgamma5.Rdata")
+      lp_full, CpGscore_full, file = "FullResultsTCGA_gamma.Rdata")
 
