@@ -1,0 +1,589 @@
+---
+title: "DNA Methylation Hierarchical Variance Model\nStan Results"
+author: "Kevin Murgas"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    fig_caption: true
+    number_section: true
+    toc: true
+params:
+  prep: true
+---
+
+\newpage
+\section{Model Overview}
+\subsection{Data}
+Logit-transformed beta values, from EPIC methylation array pre-processed with minfi Noob algorithm. \newline
+\newline Sample counts (total): 48 samples from 21 patients. \newline
+By tissue: 6 normal samples, 42 paired bulk tumor samples.
+\subsection{Model equation}
+Let i=sample, j=patient
+$$ y_i = \mu + a_j +  \text{tInd}(i)*(\beta_T + b_j + c_i) $$
+$$ a_j \sim N(0,\sigma_P) , b_j \sim N(0,\sigma_{PT}) , c_i \sim N(0,\sigma_T) $$
+\newline Model is fit at each individual CpG site using RStan's MCMC sampling algorithm. \newline
+Stan Parameters: 4 chains x 2000 iterations (200 warmup) = 7200 total draws. adapt_delta = 0.999 
+
+\subsection{Prior Probabilities}
+Priors for each parameter (mu, nu, sigmaP/PT/T) were defined using TCGA 450k array data from colorectal tumor patients with paired multiple tumor and/or normal+tumor samples. \newline Empirical values of mean and standard deviations were assesed for all 450k CpG sites. \newline The resulting distributions were fit with: bimodal gaussian (mu), Cauchy (nu), or gamma distributions (sigmas). \newline
+SigmaE (error variance) prior was defined using a non-informative gamma distribution
+\newline Additionally: Prior relaxation was performed for the Cauchy and gamma distribtions by algebraically increasing the variance of the distributions while maintaining the same mode (peak)
+
+\subsection{Conservation score}
+We want to understand which sites of DNA methylation are fundamentally conserved within tumors, i.e. lower variation in methlyation within tumor (sigmaT) relative to the variation within normal healthy tissue (sigmaP). Therefore we choose the log2-ratio of sigmaP/sigmaT to represent a conservation score, which is positive when tumor variation is lower than normal variation.
+We take the median of the posterior distribution for this parameter.
+
+$$\text{score}_\text{med} = \text{Median} (\text{log}_2\frac{\sigma_{P}}{\sigma_T}) $$
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(gt)
+library(rlang)
+library(ggpubr)
+library(knitr)
+
+# set working directory
+setwd("/Users/kevinmurgas/Documents/Data+ project/EPIC data")
+library(here)
+
+select <- dplyr::select
+rename <- dplyr::rename
+filter <- dplyr::filter
+
+set.seed(1234)
+```
+
+```{r Load, include=FALSE}
+# Load raw methylation data
+load(here("myFA_bulkonly.Rdata"))
+
+stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
+load(here(stanFile))
+
+prepdatafolder = "data_final_rg3"
+```
+
+\newpage
+\section{Fit Results}
+\subsection{Parameter Distributions}
+Histograms are median values of posterior distribution
+```{r Params_site, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
+genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
+cat(sprintf("N sites: total=%i, gene-associated=%i, non-gene=%i  \n",length(genemask),sum(genemask),length(genemask)-sum(genemask)))
+
+fBG <- function(x, a, m1, s1, m2, s2) a*dnorm(x,m1,s1) + (1-a)*dnorm(x,m2,s2) # bimodal gaussian
+post_prior_histogram <- function(postvals,mask,priorfun,bw,xl,titlestr) {
+  # stacked histogram colored by gene-associated sites
+  # and prior curve overlaid
+  plot_df <- data.frame(val=postvals, gene_assoc=mask)
+  p1 <- ggplot(plot_df, aes(x=val)) + #,fill=gene_assoc
+    #geom_histogram(aes(y=..count../length(mask)), binwidth=bw, position="dodge") +
+    #stat_function(fun=function(x) bw*priorfun(x),geom="line",color="black") +
+    geom_histogram(aes(y=..density..), binwidth=bw, position="dodge", fill="lightgray") +
+    stat_function(fun=function(x) priorfun(x), geom="line", color="black") +
+    ggtitle(titlestr) + xlim(xl) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Freq.")
+  p1
+}
+
+# plot mu,nu,sigmaE,sigmaP,sigmaPT,sigmaT with priors overlaid
+pM <- post_prior_histogram(mu_full$p50, genemask, function(x) 1.3*fBG(x,0.3557,-3.0675, 1.3027, 1.1290, 2.4110), 0.25, c(-5,5), "Mu") + theme(aspect.ratio = 1)
+pN <- post_prior_histogram(nu_full$p50, genemask, function(x) 1.5*dcauchy(x,-0.04051, 0.5799), 0.25, c(-5,5), "Nu") + theme(aspect.ratio = 1)
+pE <- post_prior_histogram(sigmaE_full$p50, genemask, function(x) 3.3*dgamma(x,2,2), 0.05, c(0,2), "SigmaE") + theme(aspect.ratio = 1)
+pP <- post_prior_histogram(sigmaP_full$p50, genemask, function(x) 1.52*dgamma(x, 2.7693, 7.0029), 0.05, c(0,2), "SigmaP") + theme(aspect.ratio = 1)
+pPT <- post_prior_histogram(sigmaPT_full$p50, genemask, function(x) 1.6*dgamma(x, 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT") + theme(aspect.ratio = 1)
+pT <- post_prior_histogram(sigmaT_full$p50, genemask, function(x) 0.97*dgamma(x, 3.3643, 10.430), 0.05, c(0,2), "SigmaT") + theme(aspect.ratio = 1)
+# log sigmas
+#pLP <- post_prior_histogram(log(sigmaP_full$p50), genemask, function(x) 0.34*dgamma(exp(x), 2.7693, 7.0029), 0.25, c(-5,5), "log(SigmaP)")
+#pLPT <- post_prior_histogram(log(sigmaPT_full$p50), genemask, function(x) 0.42*dgamma(exp(x), 2.1457, 2.4819), 0.25, c(-5,5), "log(SigmaPT)")
+#pLT <- post_prior_histogram(log(sigmaT_full$p50), genemask, function(x) 0.22*dgamma(exp(x), 3.3643, 10.430), 0.25, c(-5,5), "log(SigmaT)") + theme(legend.position = c(0.8, 0.6))
+
+# arrange each parameter as a subplot # ,labels=c("M","N","E","P","PT","T","lP","lPT","lT")
+p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,hjust=0,nrow=2,ncol=3) #,pLP,pLPT,pLT
+print(p_all)
+# ggsave("posteriors_geneassoc.svg",p_all)
+rm(pM,pN,pE,pP,pPT,pT)
+```
+
+\subsection{Conservation scores}
+```{r Fig1B, echo=FALSE, fig.height=2, fig.width=6.5, fig.fullwidth=TRUE, warning=FALSE}
+
+post_histogram <- function(postvals,mask,bw,xl,titlestr) {
+  # stacked histogram colored by gene-associated sites
+  # and prior curve overlaid
+  plot_df <- data.frame(val=postvals, gene_assoc=mask)
+  p1 <- ggplot(plot_df, aes(x=val)) +
+    #geom_histogram(aes(y=..count../length(mask),fill=gene_assoc), binwidth=bw, position="dodge") +
+    geom_histogram(aes(y=..density..,fill=gene_assoc), binwidth=bw, position="dodge") +
+    ggtitle(titlestr) + xlim(xl) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Density")
+  p1
+}
+
+# plot the two conservations score prob sums
+pP1 <- post_histogram(CpGscore_full$median,genemask,0.1,c(-3,3),expression("Median log("~sigma[P]/sigma[T]~")")) + scale_x_continuous(limits=c(-3,3),breaks=c(-3,-2,-1,0,1,2,3))
+# ggsave("CpGscore_geneassoc.svg")
+```
+
+\newpage
+\subsection{Summary of neff and Rhat for each parameter}
+```{r neffRhat, echo=FALSE, warning=FALSE}
+# for each parameter (mu, nu, sigmaP, sigmaPT, sigmaT, sigmaE, lp__)
+# reporting: mean n_eff, min n_eff, # n_eff<500, %, # n_eff<100, %
+n_eff_mat <-
+  data.frame(
+  mu = mu_full$n_eff,
+  nu = nu_full$n_eff,
+  sigmaP = sigmaP_full$n_eff,
+  sigmaPT = sigmaPT_full$n_eff,
+  sigmaT = sigmaT_full$n_eff,
+  sigmaE = sigmaE_full$n_eff,
+  lp = lp_full$n_eff
+  ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
+  mean = mean(value),
+  min = min(value),
+  s500 = sum(value < 500),
+  p500 = 100 * mean(value < 500),
+  s100 = sum(value < 100),
+  p100 = 100 * mean(value < 100),
+  .groups = "drop"
+  ) %>% arrange(match(.$param,c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+
+kable(n_eff_mat, col.names=c("Parameter", "Mean n_eff", "Min n_eff", "# <500", "% <500", "# <100", "% <100"), digits = 2)
+
+# again for Rhat
+Rhat_mat <-
+  data.frame(
+  mu = mu_full$Rhat,
+  nu = nu_full$Rhat,
+  sigmaP = sigmaP_full$Rhat,
+  sigmaPT = sigmaPT_full$Rhat,
+  sigmaT = sigmaT_full$Rhat,
+  sigmaE = sigmaE_full$Rhat,
+  lp = lp_full$Rhat
+  ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
+  mean = mean(value),
+  max = max(value),
+  s11 = sum(value > 1.1),
+  p11 = 100 * mean(value > 1.1),
+  s101 = sum(value > 1.01),
+  p101 = 100 * mean(value > 1.01),
+  .groups = "drop"
+  ) %>% arrange(match(.$param,c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+
+kable(Rhat_mat, col.names=c("Parameter", "Mean Rhat", "Max Rhat", "# >1.1", "% >1.1", "# >1.01", "% >1.01"), digits = 2)
+cat("  \n")
+
+# indices to filter out sites Rhat>1,1
+QCinds <- lp_full$Rhat > 1.1
+```
+
+For the remainder of these results, a filter is applied to remove all sites with Rhat > 1.1 in lp (log-posterior likelihood of entire site fit). Another filter is later applied to remove all genes with <5 CpG sites.
+
+\newpage Prep data
+```{r prep, echo=FALSE, include=TRUE, eval=params$prep, comment=NA}
+cat("Param:prep=TRUE -> prepare data...")
+
+med_vals <- tibble(Name=FullAnnotation[,1], mu=mu_full$p50, nu=nu_full$p50, sigmaE=sigmaE_full$p50, sigmaP=sigmaP_full$p50, sigmaPT=sigmaPT_full$p50, sigmaT=sigmaT_full$p50, Rhat=lp_full$Rhat) %>% mutate(logP=log(sigmaP), logPT=log(sigmaPT), logT=log(sigmaT)) %>%
+  mutate(score_median=CpGscore_full$median)
+
+# define filter cutoffs
+Rhat_cutoff=1.1 # maximum Rhat cutoff
+n_cutoff=5 # cutoff for gene minimum number of CpG sites
+
+# prep data by joining with FullAnnotation (columns: IlmnID, CHR, MAPINFO, RefGene_Name+Group, CpG_Island)
+cat("Prep data with annotation, filter out sites Rhat>1.1 (and save)")
+ptm<-proc.time()
+prepped_data <- tibble(FullAnnotation[,c(1,2,3,5,6,8)]) %>% rename(Name = IlmnID) %>%
+  left_join(by="Name", med_vals) %>% filter(Rhat<Rhat_cutoff)
+write_csv(prepped_data, here(prepdatafolder, "prepped_data.csv"))
+cat(proc.time()-ptm)
+
+# separate by rows by genes
+cat("Separate by gene")
+ptm<-proc.time()
+gened_data <- prepped_data %>%
+  arrange(CHR, MAPINFO) %>%
+  separate_rows(UCSC_RefGene_Name, sep=";") %>% 
+  distinct()
+write_csv(gened_data, here(prepdatafolder, "gened_data.csv"))
+cat(proc.time()-ptm)
+
+gene_summarize <- function(data, id, value, fun = mean, ...) {
+  grouped_data <- data %>% group_by({{id}})
+  
+  bind_cols(
+    summarise_at(grouped_data, dplyr::vars({{value}}), fun, ...),
+    count(grouped_data) %>% dplyr::ungroup() %>% dplyr::select(.data$n)
+  )
+}
+
+cat(paste0("Summarize by gene, taking mean value of all sites in gene, filter out sites n<",n_cutoff))
+ptm<-proc.time()
+gene_summary <- gened_data %>%
+  filter(!is.na(UCSC_RefGene_Name)) %>%
+  gene_summarize(UCSC_RefGene_Name, c(mu:sigmaT,score_median)) %>% filter(n>=n_cutoff)
+cat(proc.time()-ptm)
+
+boot_naive <- function(data, data_full, value, id, reps) {
+  lengths <- sort(unique(data$n))
+  varname <- paste0(as_name(ensym(value)), "_v1")
+  
+  # perm_v1_inner fxn: draw n_rep samples of n_sites CpG sites, randomly out of all sites
+  # take mean of each draw
+  sample_naive <- function(n_sites, n_rep, data) {
+    replicate(n = n_rep, expr = mean(sample(data, as.numeric(n_sites), TRUE)))
+  }
+  
+  # run naive_sample on all lengths to get res (list of null distributions for each length)
+  # then map a percentile to each gene based on null distrib. of that length
+  names(lengths) <- lengths
+  res <- lapply(lengths, sample_naive, n_rep = reps, data = pull(data_full, {{value}}))
+  values <- map2_dbl(pull(data, {{value}}), data$n, ~ mean(res[[as.character(.y)]] < .x))
+  
+  data %>% mutate(!!varname := values)
+}
+
+boot_adj <- function(data, data_full, value, id, reps) {
+  lengths <- sort(unique(data$n))
+  varname <- paste0(as_name(ensym(value)), "_v3")
+  
+  sample_adj <- function(n_sites, n_rep, data, id, value) {
+    perm3_data <- data %>% group_by({{id}}) %>% mutate(left = n() - row_number() + 1)
+    starting_index <- sample(which(n_sites <= perm3_data$left), n_rep, replace = TRUE)
+    map_dbl(starting_index, ~ mean(pull(perm3_data, {{value}})[.x + seq_len(n_sites) - 1]))
+  }
+  
+  names(lengths) <- lengths
+  res <- lapply(lengths, sample_adj, n_rep = reps, data = data_full, id = {{id}}, value = {{value}})
+  values <- map2_dbl(pull(data, {{value}}), data$n, ~ mean(res[[as.character(.y)]] < .x))
+  
+  data %>% mutate(!!varname := values)
+}
+
+cat("Permutate data with bootstrapping")
+ptm<-proc.time()
+# 2nd function of methcon5
+permed_data <- gene_summary %>%
+  filter(n < quantile(n, 0.99)) %>%
+  boot_naive(gened_data, score_median, UCSC_RefGene_Name, 1000) %>%
+  boot_adj(gened_data, score_median, UCSC_RefGene_Name, 1000)
+write_csv(permed_data, here(prepdatafolder, "permed_data.csv"))
+cat(proc.time()-ptm)
+
+cat("Done with data preparation")
+```
+
+```{r Exit, include=FALSE}
+knit_exit()
+```
+
+```{r load_prep, echo=FALSE, include=TRUE, message=FALSE, eval=!params$prep}
+cat("Param:prep=FALSE -> load saved data (BOTH)...")
+gened_data <- read_csv(here(prepdatafolder, "gened_data.csv"), col_types = list("CHR" = col_character()))
+prepped_data <- read_csv(here(prepdatafolder, "prepped_data.csv"))
+permed_data <- read_csv(here(prepdatafolder, "permed_data.csv"))
+cat("done")
+```
+
+\newpage
+\subsection{Tables comparing different groups of CpG sites:}
+```{r Table1, echo=FALSE, warning=FALSE}
+#, include=TRUE, results='asis', fig.keep='all', fig.show='asis', fig.height=3, fig.width=5
+# Table 1
+prepped_data %>%
+  group_by(`Gene Associated` = !is.na(UCSC_RefGene_Name)) %>%
+  summarise_at(vars(sigmaP:sigmaT,score_median), mean, na.rm = TRUE) %>%
+  mutate(`Gene Associated` = factor(`Gene Associated`, c(TRUE, FALSE), c("Yes", "No"))) %>%
+  arrange(rev(rownames(.))) %>%
+  gt() %>%
+  fmt_number(columns = vars(sigmaP, sigmaPT, sigmaT, score_median), decimals = 3) %>%
+  tab_spanner(label = "Hierarchical Variance", columns = vars(sigmaP, sigmaPT, sigmaT)) %>%
+  tab_spanner(label = "Conservation Score", columns = vars(score_median))
+
+prepped_data %>%
+  group_by(`Island relation` = Relation_to_UCSC_CpG_Island) %>%
+  summarise_at(vars(sigmaP:sigmaT,score_median), mean, na.rm = TRUE) %>%
+  dplyr::rename(ir = `Island relation`) %>%
+  mutate(ir = case_when(is.na(ir) ~ "Sea",
+                        str_detect(ir, "^S") ~ str_replace(ir, "^S_", "South "),
+                        str_detect(ir, "^N") ~ str_replace(ir, "^N_", "North "),
+                        TRUE ~ ir)) %>%
+  dplyr::rename(`Island relation` = ir) %>%
+  arrange(rev(rownames(.))) %>%
+  gt() %>%
+  fmt_number(columns = vars(sigmaP, sigmaPT, sigmaT, score_median), decimals = 3) %>%
+  tab_spanner(label = "Hierarchical Variance", columns = vars(sigmaP, sigmaPT, sigmaT)) %>%
+  tab_spanner(label = "Conservation Score", columns = vars(score_median))
+
+prepped_data %>%
+  group_by(`5'UTR` = str_detect(UCSC_RefGene_Group, "5'UTR") & !is.na(UCSC_RefGene_Group)) %>%
+  summarise_at(vars(sigmaP:sigmaT,score_median), mean, na.rm = TRUE) %>%
+  mutate(`5'UTR` = factor(`5'UTR`, c(TRUE, FALSE), c("Yes", "No"))) %>%
+  arrange(rev(rownames(.))) %>%
+  gt() %>%
+  fmt_number(columns = vars(sigmaP, sigmaPT, sigmaT, score_median), decimals = 3) %>%
+  tab_spanner(label = "Hierarchical Variance", columns = vars(sigmaP, sigmaPT, sigmaT)) %>%
+  tab_spanner(label = "Conservation Score", columns = vars(score_median))
+
+prepped_data %>%
+  group_by(`TSS1500` = str_detect(UCSC_RefGene_Group, "TSS1500") & !is.na(UCSC_RefGene_Group)) %>%
+  summarise_at(vars(sigmaP:sigmaT,score_median), mean, na.rm = TRUE) %>%
+  mutate(`TSS1500` = factor(`TSS1500`, c(TRUE, FALSE), c("Yes", "No"))) %>%
+  arrange(rev(rownames(.))) %>%
+  gt() %>%
+  fmt_number(columns = vars(sigmaP, sigmaPT, sigmaT, score_median), decimals = 3) %>%
+  tab_spanner(label = "Hierarchical Variance", columns = vars(sigmaP, sigmaPT, sigmaT)) %>%
+  tab_spanner(label = "Conservation Score", columns = vars(score_median))
+
+prepped_data %>%
+  group_by(`TSS200` = str_detect(UCSC_RefGene_Group, "TSS200") & !is.na(UCSC_RefGene_Group)) %>%
+  summarise_at(vars(sigmaP:sigmaT,score_median), mean, na.rm = TRUE) %>%
+  mutate(`TSS200` = factor(`TSS200`, c(TRUE, FALSE), c("Yes", "No"))) %>%
+  arrange(rev(rownames(.))) %>%
+  gt() %>%
+  fmt_number(columns = vars(sigmaP, sigmaPT, sigmaT, score_median), decimals = 3) %>%
+  tab_spanner(label = "Hierarchical Variance", columns = vars(sigmaP, sigmaPT, sigmaT)) %>%
+  tab_spanner(label = "Conservation Scores", columns = vars(score_median))
+
+# plot CpG island relation score distributions
+prepped_data %>% select(Name, Relation_to_UCSC_CpG_Island, score_median) %>%
+  dplyr::rename(ir = Relation_to_UCSC_CpG_Island, score=score_median) %>%
+  mutate(ir = case_when(is.na(ir) ~ "Sea",
+                        str_detect(ir, "^S") ~ str_replace(ir, "^S_", ""),
+                        str_detect(ir, "^N") ~ str_replace(ir, "^N_", ""),
+                        TRUE ~ ir)) %>%
+  #mutate(ir = factor(ir, levels = c("Island", "Shore", "Shelf", "Sea"))) %>%
+  #ggplot() + geom_density(aes(x=score,y=..scaled..,color=ir)) + theme_classic() + scale_x_continuous(limits=c(-3,3),breaks=c(-3,-2,-1,0,1,2,3)) + ylab("Normalized Density") + theme(aspect.ratio=1/4)
+  mutate(ir = factor(ir, levels = c("Sea", "Shelf", "Shore", "Island"))) %>%
+  ggplot() + geom_violin(aes(y=ir,x=score,fill=ir),draw_quantiles = 0.5) + theme_classic() + scale_x_continuous(limits=c(-3,3),breaks=c(-3,-2,-1,0,1,2,3)) + theme(aspect.ratio=1/4,legend.position = "none")
+# ggsave("CpGscore_islands_violin.svg")
+
+# plot functional region score distributions
+temp <- prepped_data %>% select(Name, UCSC_RefGene_Group, score_median) %>%
+  separate_rows(UCSC_RefGene_Group, sep=";") %>%
+  distinct() %>%
+  dplyr::rename(fr = UCSC_RefGene_Group, score=score_median) %>%
+  mutate(fr = case_when(fr=="" ~ "NA",
+                        str_detect(fr, "5URT") ~ "5'UTR",
+                        str_detect(fr, "3UTR") ~ "3'UTR",
+                        TRUE ~ fr)) %>%
+  distinct()
+keepregions = c("TSS200","5'UTR","Body","3'UTR")
+# temp %>%
+#   filter(fr %in% keepregions) %>%
+#   ggplot() + geom_density(aes(x=score,color=fr)) + theme_classic() + scale_x_continuous(limits=c(-3,3),breaks=c(-3,-2,-1,0,1,2,3)) + ylab("Normalized Density")
+keepregions = c("3'UTR","Body","5'UTR","TSS200")
+temp %>%
+  mutate(fr = factor(fr, levels = keepregions)) %>%
+  filter(fr %in% keepregions) %>%
+  ggplot() + geom_violin(aes(y=fr,x=score,fill=fr), draw_quantiles = 0.5) + theme_classic() + scale_x_continuous(limits=c(-3,3),breaks=c(-3,-2,-1,0,1,2,3)) + theme(aspect.ratio=1/4,legend.position = "none")
+# ggsave("CpGscore_regions_violin.svg")
+rm(temp)
+```
+
+\newpage
+\subsection{Gene-average Parameter Distributions}
+```{r Params_gene, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
+# make gene-wise averages
+gene_summarize <- function(data, id, value, fun = mean, ...) {
+  grouped_data <- data %>% group_by({{id}})
+  
+  bind_cols(
+    summarise_at(grouped_data, dplyr::vars({{value}}), fun, ...),
+    count(grouped_data) %>% dplyr::ungroup() %>% dplyr::select(.data$n)
+  )
+}
+
+cat("Summarize by gene, taking mean value of all sites in gene")
+ptm<-proc.time()
+gene_summary <- gened_data %>%
+  filter(!is.na(UCSC_RefGene_Name)) %>%
+  gene_summarize(UCSC_RefGene_Name, c(mu:sigmaT,score_median))
+cat(proc.time()-ptm)
+
+post_histogram <- function(postvals,bw,xl,titlestr) {
+  # stacked histogram colored by gene averages
+  # and prior curve overlaid
+  plot_df <- data.frame(val=postvals)
+  p1 <- ggplot(plot_df, aes(x=val)) +
+    geom_histogram(aes(y=..density..), binwidth=bw) +
+    ggtitle(titlestr) + xlim(xl) + theme_classic() + xlab(titlestr) + ylab("Freq.")
+  p1
+}
+
+# plot: n_sites, mu, nu, sigmaP, sigmaPT, sigmaT
+n_cutlo = 5
+n_cuthi = quantile(gene_summary$n, 0.99)
+pNS <- post_histogram(gene_summary$n,1,c(0,200),paste0("N sites (max = ",max(gene_summary$n),")")) + geom_vline(xintercept=n_cutlo-0.5,linetype = "dashed",color="red") + annotate(geom="text",x=80,y=0.03,size=2,label=paste0("# genes <",n_cutlo," sites:\n", sum(gene_summary$n<n_cutlo)," / ",nrow(gene_summary))) +
+geom_vline(xintercept=n_cuthi,linetype = "dashed",color="red") +annotate(geom="text",x=120,y=0.013,size=2,label=sprintf("# genes >%0.1f sites:\n %i / %i (99th pctile)", n_cuthi,sum(gene_summary$n>n_cuthi),nrow(gene_summary)))
+gene_summary <- gene_summary %>% filter(n>=n_cutlo) %>% filter(n<n_cuthi)
+pM <- post_histogram(gene_summary$mu,0.1,c(-5,5),"Mu")
+pN <- post_histogram(gene_summary$nu,0.1,c(-5,5),"Nu")
+pP <- post_histogram(gene_summary$sigmaP,0.05,c(0,2),"SigmaP")
+pPT <- post_histogram(gene_summary$sigmaPT,0.05,c(0,2),"SigmaPT")
+pT <- post_histogram(gene_summary$sigmaT,0.05,c(0,2),"SigmaT")
+pP1 <- post_histogram(gene_summary$score_median,0.05,c(-3,3),"Score_median")
+
+# arrange each parameter as a subplot
+p_all <- ggarrange(pNS,pM,pN,pP,pPT,pT,pP1,hjust=0,nrow=3,ncol=3)
+print(p_all)
+rm(pNS,pM,pN,pP,pPT,pT,pP1)
+
+```
+
+\newpage
+\subsection{Gene-average parameters vs N sites}
+```{r Params_vsN, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA, dev = "png"}
+pM <- ggplot(gene_summary) + geom_point(aes(x=n,y=mu), alpha=0.01) + ggtitle("Mu vs N-sites")
+pB <- ggplot(gene_summary) + geom_point(aes(x=n,y=nu), alpha=0.01) + ggtitle("Nu vs N-sites")
+pE <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaE), alpha=0.01) + ggtitle("SigmaE vs N-sites")
+pP <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaP), alpha=0.01) + ggtitle("SigmaP vs N-sites")
+pPT <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaPT), alpha=0.01) + ggtitle("SigmaPT vs N-sites")
+pT <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaT), alpha=0.01) + ggtitle("SigmaT vs N-sites")
+
+pP1 <- ggplot(gene_summary) + geom_point(aes(x=n,y=score_median), alpha=0.01) + ggtitle("Score_median vs N-sites")
+
+# arrange each parameter as a subplot
+p_all <- ggarrange(pM,pB,pE,pP,pPT,pT,pP1,hjust=0,nrow=3,ncol=3)
+print(p_all)
+rm(pM,pB,pE,pP,pPT,pT,pP1)
+```
+
+\newpage
+\subsection{Figure 1: CpG Distance Analysis}
+Corrected for gene direction, based on Ensembl gene database
+```{r Fig1, echo=FALSE, warning=FALSE, fig.width=7, fig.height=2.5, comment=NA}
+# load ensembl db
+library(EnsDb.Hsapiens.v75) # ensembl annotation with gene position (hg19 version)
+edb <- EnsDb.Hsapiens.v75
+geneKeys <- keys(edb, keytype="GENENAME") %>% intersect(unique(gened_data$UCSC_RefGene_Name))
+edbData<- AnnotationDbi::select(edb, keys=geneKeys, keytype="GENENAME",
+                                columns=c("GENEBIOTYPE", "GENESEQSTART", "GENESEQEND", "SEQNAME", "SEQSTRAND")) %>%
+  filter(SEQNAME %in% c(as.character(1:22),"X","Y")) %>%
+  mutate(GENESTART = GENESEQSTART*(SEQSTRAND==1) + GENESEQEND*(SEQSTRAND==-1)) %>%
+  select(-c(GENESEQSTART,GENESEQEND))
+
+# calculate CpG distance based on Ensembl gene start position and direction
+distanced_data <- gened_data %>%
+  filter(!is.na(UCSC_RefGene_Name)) %>%
+  filter(UCSC_RefGene_Name %in% geneKeys) %>%
+  mutate(EDBCHR=edbData$SEQNAME[match(UCSC_RefGene_Name,edbData$GENENAME)],
+         EDBSTART=edbData$GENESTART[match(UCSC_RefGene_Name,edbData$GENENAME)],
+         EDBDIR=edbData$SEQSTRAND[match(UCSC_RefGene_Name,edbData$GENENAME)],
+         EDBTYPE=edbData$GENEBIOTYPE[match(UCSC_RefGene_Name,edbData$GENENAME)]
+         ) %>%
+  filter(CHR==EDBCHR) %>%
+  mutate(cpgdist = if_else(EDBDIR==1, MAPINFO-EDBSTART, EDBSTART-MAPINFO))
+
+distance_length <- distanced_data %>%
+  filter(!is.na(UCSC_RefGene_Name)) %>%
+  select(CHR, UCSC_RefGene_Name, cpgdist, c(sigmaP:sigmaT,score_median)) %>%
+  mutate(location_bin = cut(cpgdist, c(seq(-1500, 20000, by = 100)), include.lowest = TRUE)) %>%
+  group_by(location_bin) %>%
+  summarise(mean_sigmaP = mean(sigmaP), mean_sigmaPT = mean(sigmaPT), mean_sigmaT = mean(sigmaT),  mean_score_median = mean(score_median), n_obs = n(), .groups='drop') %>%
+  mutate(location_bin = as.numeric(str_extract(location_bin, "(?<=,)(.*)(?=])")))
+
+distance_length %>%
+  drop_na() %>%
+  pivot_longer(mean_sigmaP:mean_sigmaT) %>% 
+  mutate(name = factor(name, c("mean_sigmaP","mean_sigmaPT","mean_sigmaT"), c("SigmaP","SigmaPT","SigmaT"))) %>%
+  sample_frac() %>%
+  ggplot(aes(location_bin, value, color = name, fill = name)) +
+  geom_point(key_glyph = draw_key_rect) +
+  ggforce::facet_zoom(location_bin < 5000) +
+  theme_light() +
+  theme(legend.position = "bottom") +
+  labs(title = NULL,
+       fill = NULL,
+       color = NULL,
+       x = "Distance from gene start site (binned to 100 bp)",
+       y = "Average Sigma Value", 
+       caption = "Figure 1: Average Sigma values of single CpGs as a function of position relative to gene.") +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2")
+cat("\n")
+
+# again for conservation scores
+distance_length %>%
+  drop_na() %>%
+  pivot_longer(mean_score_median) %>% 
+  #mutate(name = factor(name, c("mean_score_median"), c("Score_median"))) %>%
+  sample_frac() %>%
+  ggplot(aes(location_bin, value, color = name, fill = name)) +
+  geom_point(key_glyph = draw_key_rect) +
+  ggforce::facet_zoom(location_bin < 5000) +
+  theme_light() +
+  theme(legend.position = "bottom") +
+  labs(title = NULL,
+       fill = NULL,
+       color = NULL,
+       x = "Distance from gene start site (binned to 100 bp)",
+       y = "Average Conservation Score", 
+       caption = "Figure 1: Average conservation scores of single CpGs as a function of position relative to gene."
+       ) +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2")
+cat("\n")
+# ggsave("CpGdist.svg")
+
+# and look at number of CpG in each bin
+distance_length %>%
+  drop_na() %>%
+  pivot_longer(n_obs) %>%
+  mutate(name = factor(name, c("n_obs"), c("n_obs"))) %>%
+  sample_frac() %>%
+  ggplot(aes(location_bin, value, color = name, fill = name)) +
+  geom_point(key_glyph = draw_key_rect) +
+  ggforce::facet_zoom(location_bin < 5000) +
+  theme_light() +
+  theme(legend.position = "bottom") +
+  labs(title = NULL,
+       fill = NULL,
+       color = NULL,
+       x = "Distance from gene start site (binned to 100 bp)",
+       y = "Number of CpGs", 
+       caption = "Figure 1: Frequency of single CpGs as a function of position relative to gene start site.") +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2")
+```
+
+\subsection{Figure 2: Bootstrapping}
+```{r Fig2, echo=FALSE, warning=FALSE, fig.height=4, comment=NA}
+# Figure 2
+permed_data %>%
+  pivot_longer(dplyr::matches("1|3")) %>%
+  separate(name, into = c("type", "method"), sep = "_v") %>%
+  mutate(method = factor(method, c("1", "3"), c("Naive bootstrap", "Adjusted bootstrap")),
+         type = factor(type, c("sigmaP","sigmaPT","sigmaT"), c("SigmaP","SigmaPT","SigmaT"))) %>%
+  drop_na() %>%
+  ggplot(aes(value, fill = type)) +
+  geom_histogram(bins = 50, color = "grey30") +
+  facet_grid(method~type, scales = "free") +
+  theme_minimal() +
+  labs(x = "p-value",
+       y = "Number of genes",
+       title = NULL,
+       caption = "Figure 2A: Distribution of boot-strapping p-values for genes as a function of sigma level and bootstrap method.")  +
+  theme(legend.position = "none") +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2")
+
+cat("***")
+permed_data %>%
+  pivot_longer(dplyr::matches("1|3")) %>%
+  separate(name, into = c("type", "method"), sep = "_v") %>%
+  mutate(method = factor(method, c("1", "3"), c("Naive bootstrap", "Adjusted bootstrap")),
+         type = factor(type, c("score_median"), c("Score_median"))) %>%
+  drop_na() %>%
+  ggplot(aes(value, fill = type)) +
+  geom_histogram(bins = 50, color = "grey30") +
+  facet_grid(method~type, scales = "free") +
+  theme_minimal() +
+  labs(x = "p-value",
+       y = "Number of genes",
+       title = NULL,
+       caption = "Figure 2B: Distribution of boot-strapping p-values for genes as a function of conservation score and bootstrap method.")  +
+  theme(legend.position = "none") +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2")
+```
