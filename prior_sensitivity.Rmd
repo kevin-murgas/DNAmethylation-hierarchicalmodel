@@ -40,7 +40,7 @@ sigmaP_ests <- sqrt(sigmaP_ests[which(!!sigmaP_ests)])
 sigmaPT_ests <- sqrt(sigmaPT_ests[which(!!sigmaPT_ests)])
 sigmaT_ests <- sqrt(sigmaT_ests[which(!!sigmaT_ests)])
 mu_ests <- mu_ests[which(!!mu_ests)]
-betaT_ests <- betaT_ests[which(!!betaT_ests)]
+nu_ests <- nu_ests[which(!!nu_ests)]
 
 gg_color_hue <- function(n) {
   hues = seq(15, 375, length = n + 1)
@@ -62,12 +62,12 @@ p1 <- ggplot(data.frame(p=mu_ests), aes(x=p)) + geom_histogram(binwidth=0.1,aes(
   stat_function(fun=function(x) f(x,0.3557,-3.0675, 1.0637,1.1290, 1.9685),geom="line",color=cols[2]) +
   stat_function(fun=function(x) f(x,0.3557,-3.0675, 1.3027,1.1290, 2.4110),geom="line",color=cols[3]) +
   stat_function(fun=function(x) f(x,0.3557,-3.0675, 1.6818,1.1290, 3.1125),geom="line",color=cols[4])
-# betaT
+# nu
 # 1x: Cauchy(-0.04051, 0.19330)
 # 2x: Cauchy(-0.04051, 0.38660)
 # 3x: Cauchy(-0.04051, 0.57990)
 # 5x: Cauchy(-0.04051, 0.96650)
-p2 <- ggplot(data.frame(p=betaT_ests), aes(x=p)) + geom_histogram(binwidth=0.1,aes(y=..density..),fill="lightgray") + theme_classic() +
+p2 <- ggplot(data.frame(p=nu_ests), aes(x=p)) + geom_histogram(binwidth=0.1,aes(y=..density..),fill="lightgray") + theme_classic() +
   #labs(x=expression(nu)) +
   xlim(-5,5) +
   stat_function(fun=function(x) dcauchy(x,-0.04051, 0.19330),geom="line",color=cols[1]) +
@@ -119,7 +119,7 @@ p_all <- ggarrange(p1,p2,p3,p4,p5,p6)
 
 ```{r prior_sensitivity, echo=FALSE, comment=NA}
 
-n_eff_mat <- data.frame(Params=c("mu","betaT","sigmaP","sigmaPT","sigmaT","sigmaE","lp"))
+n_eff_mat <- data.frame(Params=c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp"))
 Rhat_mat <- n_eff_mat
 KLdiv_mat <- n_eff_mat %>% slice(1:6)
 BCdist_mat <- KLdiv_mat
@@ -139,7 +139,7 @@ for (i in c(1:4)) {
   n_eff_temp <-
   data.frame(
   mu = mu_full$n_eff,
-  betaT = betaT_full$n_eff,
+  nu = nu_full$n_eff,
   sigmaP = sigmaP_full$n_eff,
   sigmaPT = sigmaPT_full$n_eff,
   sigmaT = sigmaT_full$n_eff,
@@ -148,12 +148,12 @@ for (i in c(1:4)) {
   ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
   mean = mean(value),
   .groups = "drop"
-  ) %>% arrange(match(.$param,c("mu","betaT","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+  ) %>% arrange(match(.$param,c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
   
   Rhat_temp <-
   data.frame(
   mu = mu_full$Rhat,
-  betaT = betaT_full$Rhat,
+  nu = nu_full$Rhat,
   sigmaP = sigmaP_full$Rhat,
   sigmaPT = sigmaPT_full$Rhat,
   sigmaT = sigmaT_full$Rhat,
@@ -162,7 +162,7 @@ for (i in c(1:4)) {
   ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
   mean = mean(value),
   .groups = "drop"
-  ) %>% arrange(match(.$param,c("mu","betaT","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+  ) %>% arrange(match(.$param,c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
   
   # KL divergence
   # formula: KL(P||Q) = sum(P(i) * log( P(i)/Q(i) )), where P(i),Q(i) = density
@@ -177,7 +177,7 @@ for (i in c(1:4)) {
     # choose parameter
     data <- switch(j,
                    mu_full$p50,
-                   betaT_full$p50,
+                   nu_full$p50,
                    sigmaP_full$p50,
                    sigmaPT_full$p50,
                    sigmaT_full$p50,
@@ -283,7 +283,7 @@ mu_allprior <- data.frame(x1=numeric(866091),
                           x2=numeric(866091),
                           x3=numeric(866091),
                           x5=numeric(866091))
-betaT_allprior <- mu_allprior
+nu_allprior <- mu_allprior
 sigmaP_allprior <- mu_allprior
 sigmaPT_allprior <- mu_allprior
 sigmaT_allprior <- mu_allprior
@@ -301,7 +301,7 @@ for (i in c(1:4)) {
   print("loaded")
   
   mu_allprior[,i] <- mu_full$p50
-  betaT_allprior[,i] <- betaT_full$p50
+  nu_allprior[,i] <- nu_full$p50
   sigmaP_allprior[,i] <- sigmaP_full$p50
   sigmaPT_allprior[,i] <- sigmaPT_full$p50
   sigmaT_allprior[,i] <- sigmaT_full$p50
@@ -310,7 +310,7 @@ for (i in c(1:4)) {
 
 cat("Posterior estimates for varying prior relaxation")
 pM <- mu_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-6,6) + ggtitle("Mu") + theme_classic() + theme(legend.position = "none")
-pB <- betaT_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-5,5) + ggtitle("BetaT") + theme_classic() + theme(legend.position = "none")
+pN <- nu_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-5,5) + ggtitle("Nu") + theme_classic() + theme(legend.position = "none")
 pP <- sigmaP_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(0,2) + ggtitle("sigmaP") + theme_classic() + theme(legend.position = "none")
 pPT <- sigmaPT_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(0,2) + ggtitle("sigmaPT") + theme_classic() + theme(legend.position = "none")
 pT <- sigmaT_allprior %>% gather("relax","val",1:4) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(0,2) + ggtitle("sigmaT") + theme_classic() + theme(legend.position = "none")
@@ -319,7 +319,7 @@ pLP <- sigmaP_allprior %>% gather("relax","val",1:4) %>% mutate(val=log(val)) %>
 pLPT <- sigmaPT_allprior %>% gather("relax","val",1:4) %>% mutate(val=log(val)) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-4,1) + ggtitle("log(sigmaPT)") + theme_classic() + theme(legend.position = "none")
 pLT <- sigmaT_allprior %>% gather("relax","val",1:4) %>% mutate(val=log(val)) %>% ggplot(aes(x=val,y=..density..,color=relax)) + geom_density() + xlim(-4,1) + ggtitle("log(sigmaT)") + theme_classic() + theme(legend.position = "none")
 
-p_all<- ggarrange(pM, pB, pE, pP, pPT, pT, pLP, pLPT, pLT, nrow=3, ncol=3)
+p_all<- ggarrange(pM, pN, pE, pP, pPT, pT, pLP, pLPT, pLT, nrow=3, ncol=3)
 print(p_all)
 # ggsave("prior_sens_kdes.svg",p1)
 ```
