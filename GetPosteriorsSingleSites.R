@@ -92,7 +92,7 @@ fitplot <- function(data,stanFit) {
   npats <- max(pats)
   sumTemp <- summary(stanFit)$summary
   mu <- sumTemp[1,1] # mean estimate
-  betaT <- sumTemp[2,1] # mean
+  nu <- sumTemp[2,1] # mean
   sampcoefs <- data.frame(pat = pats, b = sumTemp[6+pats], c = sumTemp[6+npats+pats], d = sumTemp[6+2*npats+c(1:nsamp)])
   patcoefs <- data.frame(pat = 1:npats, b = sumTemp[6+1:npats], c = sumTemp[6+npats+1:npats])
   rm(sumTemp)
@@ -103,7 +103,7 @@ fitplot <- function(data,stanFit) {
   patdf <- data.frame(pat = rep(levels(data$patient),2), tInd = c(rep(0,npats),rep(1,npats)), est = c(patcoefs$b+mu, patcoefs$b+patcoefs$c+mu+betaT))
   p1 <- p1 + geom_line(data=patdf, aes(x=tInd, y=est, colour=pat))
   # add overall mean estimates as black dots
-  meandf <- data.frame(tInd = c(0,1), est = c(mu,mu+betaT))
+  meandf <- data.frame(tInd = c(0,1), est = c(mu,mu+nu))
   p1 <- p1 + geom_point(data=meandf, aes(x=tInd, y=est), size=3, alpha=0.7) + geom_line(data=meandf, aes(x=tInd, y=est), size=2, alpha=0.5)
   
   return(p1)
@@ -143,7 +143,7 @@ stanDat1 <- list(
 emptyFit <- stan(file="model_TCGApriors.stan", data = stanDat1, chains = 0)
 
 # # run in parallel via doParallel
-# # want to collect data of random effect coefficients (bcd), fixed effects (betaT,mu), and sigmas
+# # want to collect data of random effect coefficients (abg), fixed effects (nu,mu), and sigmas
 # cl <- makeCluster(detectCores()-3)
 # registerDoParallel(cl)
 # print(paste("Cores registered:",getDoParWorkers()))
@@ -155,29 +155,33 @@ emptyFit <- stan(file="model_TCGApriors.stan", data = stanDat1, chains = 0)
 #   print(paste("site:", i,"/",nsites))
 #   sink()
 # 
-#   data <- site(i)
-#   stanFit <- stanfit3(data)
-#   fitSumm <- summary(stanFit)$summary[71:76, mInd] # pulls betaT, mu, sigmaE,P,PT,T
-# 
+#   data <- site(siteInds[i])
+#   stanFit <- stanfit_model(data)
+#   # take summary values for first 6 params (mu, nu, sigmas x4) and last param (lp__)
+#   fitSumm <- summary(stanFit)$summary[c(1:6,dim(summary(stanFit)$summary)[1]), c(1, 2, 6, 9, 10)]
+#
+#   # compute posterior log-ratio: log2(sigmaP/sigmaT), take integral>0, mean, median
 #   posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_t"))
-#   CpGscore <- log2(posterior[,1]/posterior[,2])
-#   fitSumm <- rbind(fitSumm,rep(median(CpGscore),length(mInd)))
+#   logPTratio <- log2(posterior[,1]/posterior[,2])
+#   CpGscore <- c(mean(logPTratio > 0), mean(logPTratio), median(logPTratio))
+#   fitSumm <- rbind(fitSumm,CpGscore)
 # 
-#   rm(data,stanFit)
+#   rm(data, stanFit, posterior, logPTratio, CpGscore)
 #   gc()
 #   
-#   split(fitSumm, row(fitSumm))
+#   split(fitSumm, rownames(fitSumm))
 # }
 # proc.time() - ptm
 # stopCluster(cl)
 # 
-# betaT_C[,] <- parData$'1'
-# mu_C[,] <- parData$'2'
-# sigmaE_C[,] <- parData$'3'
-# sigmaP_C[,] <- parData$'4'
-# sigmaPT_C[,] <- parData$'5'
-# sigmaT_C[,] <- parData$'6'
-# CpGscore_C <- parData$'7'[,1]
+# mu_C[,] <- parData$mu
+# nu_C[,] <- parData$nu
+# sigmaP_C[,] <- parData$sigma_p
+# sigmaPT_C[,] <- parData$sigma_pt
+# sigmaT_C[,] <- parData$sigma_t
+# sigmaE_C[,] <- parData$sigma_e
+# lp_C[,] <- parData$lp__
+# CpGscore <- parData$CpGscore[,1:3]
 # #rm(parData)
 # gc()
 

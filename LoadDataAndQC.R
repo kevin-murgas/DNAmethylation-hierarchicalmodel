@@ -501,7 +501,7 @@ map <- mapToGenome(raw_1639)
 gr <- granges(map, use.names=TRUE)
 anno <- getAnnotation(map)
 
-# DMP finder (can compare to mu/betaT later)
+# DMP finder (can compare to mu/nu later)
 temp <- as.matrix(FullAnnotation[,10:57])
 rownames(temp) <- FullAnnotation$IlmnID
 patientLabel <- substr(colnames(temp),1,1)

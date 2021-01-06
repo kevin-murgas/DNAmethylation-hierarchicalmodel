@@ -1,5 +1,5 @@
 # load StanCRun data
-# produce full size data frames for mu,betaT,sigmas (P,PT,T,E)
+# produce full size data frames for mu,nu,sigmas (P,PT,T,E)
 # read in individual save files containing 10000 site runs
 # store 10000 site chunks in corresponding positions in full data frame
 # repeat for each completed run
