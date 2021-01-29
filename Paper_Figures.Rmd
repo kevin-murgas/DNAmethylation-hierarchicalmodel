@@ -37,12 +37,17 @@ load(here("myFA_bulkonly.Rdata"))
 
 stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
 load(here(stanFile))
+CpGscore_full = CpGscore_full %>% mutate(mean = mean*2, median=median*2)
 
 prepdatafolder = "data_final_rg3"
 cat(sprintf("Load prepped data dir: %s (needs to be pre-processed in StanAnalysis.Rmd)...",prepdatafolder))
 gened_data <- read_csv(here(prepdatafolder, "gened_data.csv"), col_types = list("CHR" = col_character()))
 prepped_data <- read_csv(here(prepdatafolder, "prepped_data.csv"))
 permed_data <- read_csv(here(prepdatafolder, "permed_data.csv"))
+
+gened_data <- gened_data %>% mutate(score_median = score_median*2)
+prepped_data <- prepped_data %>% mutate(score_median = score_median*2)
+permed_data <- permed_data %>% mutate(score_median = score_median*2)
 
 ```
 
@@ -135,33 +140,36 @@ genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
 cat(sprintf("N sites: total=%i, gene-associated=%i, non-gene=%i  \n",length(genemask),sum(genemask),length(genemask)-sum(genemask)))
 
 fBG <- function(x, a, m1, s1, m2, s2) a*dnorm(x,m1,s1) + (1-a)*dnorm(x,m2,s2) # bimodal gaussian
-post_prior_histogram <- function(postvals,mask,priorfun,bw,xl,titlestr) {
-  # stacked histogram colored by gene-associated sites
-  # and prior curve overlaid
-  plot_df <- data.frame(val=postvals, gene_assoc=mask)
+post_prior_histogram <- function(postvals,priorfun,bw,xl,titlestr) {
+  # histogram and prior curve overlaid
+  plot_df <- data.frame(val=postvals)
   p1 <- ggplot(plot_df, aes(x=val)) +
-    geom_histogram(aes(y=..count../length(mask),fill=gene_assoc), binwidth=bw) +
+    geom_histogram(aes(y=..density..), binwidth=bw) +
     stat_function(fun=function(x) bw*priorfun(x),geom="line",color="black") +
     ggtitle(titlestr) + xlim(xl) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Freq.")
   p1
 }
 
 # plot hierarchical model posterior medians for mu,nu,sigmaE,sigmaP,sigmaPT,sigmaT; with priors overlaid
-pM <- post_prior_histogram(mu_full$p50, genemask, function(x) 1.5*fBG(x,0.3557,-3.0675, 0.75214,1.1290, 1.39197), 0.1, c(-5,5), "Mu")
-pN <- post_prior_histogram(nu_full$p50, genemask, function(x) 1.7*dcauchy(x,-0.04051, 0.5799), 0.1, c(-5,5), "Nu")
-pE <- post_prior_histogram(sigmaE_full$p50, genemask, function(x) 4*dgamma(x,2,2), 0.05, c(0,2), "SigmaE")
-pP <- post_prior_histogram(sigmaP_full$p50, genemask, function(x) 2*dgamma(x, 2.7693, 7.0029), 0.05, c(0,2), "SigmaP")
-pPT <- post_prior_histogram(sigmaPT_full$p50, genemask, function(x) 1.8*dgamma(x, 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT")
-pT <- post_prior_histogram(sigmaT_full$p50, genemask, function(x) 1.2*dgamma(x, 3.3643, 10.430), 0.05, c(0,2), "SigmaT")
+pM <- post_prior_histogram(mu_full$p50, function(x) 10*fBG(x,0.3557,-3.0675, 0.75214,1.1290, 1.39197), 0.1, c(-5,5), "Mu")
+pN <- post_prior_histogram(nu_full$p50, function(x) 15*dcauchy(x,-0.04051, 0.5799), 0.1, c(-5,5), "Nu")
+#pE <- post_prior_histogram(sigmaE_full$p50, function(x) 4*dgamma(x,2,2), 0.05, c(0,2), "SigmaE")
+#pP <- post_prior_histogram(sigmaP_full$p50^2, function(x) 2*dgamma(x, 2.7693, 7.0029), 0.05, c(0,2), "SigmaP")
+#pPT <- post_prior_histogram(sigmaPT_full$p50^2, function(x) 1.8*dgamma(x, 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT")
+#pT <- post_prior_histogram(sigmaT_full$p50^2, function(x) 1.2*dgamma(x, 3.3643, 10.430), 0.05, c(0,2), "SigmaT")
+pE <- post_prior_histogram(sigmaE_full$p50^2, function(x) 100*dgamma(sqrt(x),2,2), 0.05, c(0,2), "SigmaE^2")
+pP <- post_prior_histogram(sigmaP_full$p50^2, function(x) 250*dgamma(sqrt(x), 2.7693, 7.0029), 0.01, c(0,1), "SigmaP^2")
+pPT <- post_prior_histogram(sigmaPT_full$p50^2, function(x) 40*dgamma(sqrt(x), 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT^2")
+pT <- post_prior_histogram(sigmaT_full$p50^2, function(x) 220*dgamma(sqrt(x), 3.3643, 10.430), 0.01, c(0,1), "SigmaT^2")
 # log sigmas
-pLP <- post_prior_histogram(log(sigmaP_full$p50), genemask, function(x) 0.52*dgamma(exp(x), 2.7693, 7.0029), 0.1, c(-5,5), "log(SigmaP)")
-pLPT <- post_prior_histogram(log(sigmaPT_full$p50), genemask, function(x) 0.7*dgamma(exp(x), 2.1457, 2.4819), 0.1, c(-5,5), "log(SigmaPT)")
-pLT <- post_prior_histogram(log(sigmaT_full$p50), genemask, function(x) 0.4*dgamma(exp(x), 3.3643, 10.430), 0.1, c(-5,5), "log(SigmaT)") + theme(legend.position = c(0.8, 0.6), legend.text=element_text(size=6), legend.title=element_text(size=6))
+#pLP <- post_prior_histogram(log(sigmaP_full$p50), genemask, function(x) 0.52*dgamma(exp(x), 2.7693, 7.0029), 0.1, c(-5,5), "log(SigmaP)")
+#pLPT <- post_prior_histogram(log(sigmaPT_full$p50), genemask, function(x) 0.7*dgamma(exp(x), 2.1457, 2.4819), 0.1, c(-5,5), "log(SigmaPT)")
+#pLT <- post_prior_histogram(log(sigmaT_full$p50), genemask, function(x) 0.4*dgamma(exp(x), 3.3643, 10.430), 0.1, c(-5,5), "log(SigmaT)") + theme(legend.position = c(0.8, 0.6), legend.text=element_text(size=6), legend.title=element_text(size=6))
 
 # arrange each parameter as a subplot # ,labels=c("M","B","E","P","PT","T","lP","lPT","lT")
-p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,pLP,pLPT,pLT,hjust=0,nrow=3,ncol=3)
+p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,hjust=0,nrow=2,ncol=3)
 print(p_all)
-rm(pM,pN,pE,pP,pPT,pT,pLP,pLPT,pLT)
+rm(pM,pN,pE,pP,pPT,pT)
 ```
 
 \newpage
@@ -246,15 +254,15 @@ post_histogram <- function(postvals,mask,bw,titlestr) {
 
 # plot the two conservations score prob sums
 genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
-p_scores <- post_histogram(CpGscore_full$median,genemask,0.05,"CpG Conservation score") +
+p_scores <- post_histogram(CpGscore_full$median,genemask,0.2,"CpG Conservation score") +
   theme(aspect.ratio=1/4,legend.position = "none") +
-  scale_x_continuous(limits=c(-4,4),breaks=c(-4,-2,0,2,4)) + 
+  scale_x_continuous(limits=c(-8,8),breaks=c(-8,-4,0,4,8)) + 
   scale_y_continuous(breaks=c(0,0.1,0.2,0.3,0.4,0.5))
 print(p_scores)
 # ggsave("CpGscores_overlay.svg")
 
 # Fig 4B: plot gene scores and adjusted bootstrap distribution
-p1 <- permed_data %>% ggplot(aes(x=score_median)) + geom_histogram(aes(y=..count..), binwidth=0.1, fill="lightgray",color = "grey50") + xlim(c(-1.5,3.5)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
+p1 <- permed_data %>% ggplot(aes(x=score_median)) + geom_histogram(aes(y=..count..), binwidth=0.1, fill="lightgray",color = "grey50") + xlim(c(-3,7)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
 p2 <- permed_data %>% ggplot(aes(x=score_median_v3)) + geom_histogram(aes(y=..count..), binwidth=0.02, fill="lightgray", color="grey50") + xlim(c(0,1)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
 p_genes <- ggarrange(p1,p2,nrows=2,ncol=1)
 # ggsave("gene_scores_bootstrap.svg")
@@ -410,30 +418,18 @@ distanced_data <- gened_data %>%
 distance_length <- distanced_data %>%
   filter(!is.na(UCSC_RefGene_Name)) %>%
   select(CHR, UCSC_RefGene_Name, cpgdist, c(score_median)) %>%
-  mutate(location_bin = cut(cpgdist, c(seq(-1500, 20000, by = 100)), include.lowest = TRUE)) %>%
+  mutate(location_bin = cut(cpgdist, c(seq(-1500, 9000, by = 100)), include.lowest = TRUE)) %>%
   group_by(location_bin) %>%
   summarise(mean_score_median = mean(score_median), n_obs = n(), .groups='drop') %>%
   mutate(location_bin = as.numeric(str_extract(location_bin, "(?<=,)(.*)(?=])")))
 
 # plot for conservation scores
-distance_length %>%
-  drop_na() %>%
-  pivot_longer(mean_score_median) %>% 
-  mutate(name = factor(name, c("mean_score_median"), c("Score_median"))) %>%
-  sample_frac() %>%
-  ggplot(aes(location_bin, value, color = name, fill = name)) +
-  geom_point(key_glyph = draw_key_rect) +
-  ggforce::facet_zoom(location_bin < 5000) +
-  theme_light() +
-  theme(legend.position = "bottom") +
-  labs(title = NULL,
-       fill = NULL,
-       color = NULL,
-       x = "Distance from gene start site (binned to 100 bp)",
-       y = "Average Conservation Score", 
-       caption = "Figure 3D: Average conservation scores of single CpGs as a function of position relative to gene.") +
-  scale_color_brewer(palette = "Set2") +
-  scale_fill_brewer(palette = "Set2")
+distance_length %>% drop_na() %>%
+  ggplot(aes(x = location_bin, y = mean_score_median)) +
+  geom_point(color="black") +
+  theme_bw() + theme(legend.position = "none", aspect.ratio = 3/8) +
+  xlab("Distance from gene start site (binned to 100 bp)") + ylab("Average Conservation Score") +
+  scale_x_continuous(breaks = seq(-1500,10000,1500))
 cat("\n")
 # ggsave("CpGdist.svg")
 ```

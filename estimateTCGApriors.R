@@ -343,9 +343,11 @@ text(0.7,5,expression(Gamma*"("*alpha*"=6.8383,"~beta*"=25.7560)"),col="blue")
 
 # calculate relaxed priors (for gammas)
 # increase variance by 2 but keep same mode
-a1 = 6.8383; b1 = 25.7560
+a1 = 5.1989; b1 = 16.6192 # sigmaP
+a1 = 3.5539; b1 = 5.5324 # sigmaPT
+a1 = 6.8383; b1 = 25.7560 # sigmaT
 f1 <- function(a2, a1, b1) (a2-1)*b1/(a1-1) # mode
-f2 <- function(a2, a1, b1) sqrt(a2*b1^2/(3*a1)) # 3x variance
+f2 <- function(a2, a1, b1) sqrt(a2*b1^2/(10*a1)) # 3x variance
 a2range = c(0:1000000)*0.00001
 out1 <- f1(a2range,a1,b1) - f2(a2range,a1,b1)
 a2 = a2range[which(abs(out1)==min(abs(out1)))]

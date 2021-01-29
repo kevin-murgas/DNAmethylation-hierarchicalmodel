@@ -25,7 +25,7 @@ load("myFA_bulkonly.Rdata")
 # randomly select 5 sites in 1-866091
 #siteInds <- sample(1:866091,5)
 siteInds <- c(525490, 570532, 827025, 287316, 854143)
-siteInds <- 124022
+#siteInds <- 124022
 nsites <- length(siteInds)
 
 
@@ -82,9 +82,9 @@ stanfit_model <- function (dataset) {
 
 # Plot raw data and fits
 fitplot <- function(data,stanFit) {
-  # plot beta and fits at this site for all patients, using mean estimates for b and c coefficients
+  # plot M and fits at this site for all patients, using mean estimates for b and c coefficients
   # first plot data points
-  p1 <- ggplot() + geom_point(data = data, aes(x=tInd, y=beta, colour=patient))
+  p1 <- ggplot() + geom_point(data = data, aes(x=tInd, y=M, colour=patient))
   
   # extract coefficients from stan fit
   pats <- as.integer(factor(data$patient))
@@ -97,10 +97,10 @@ fitplot <- function(data,stanFit) {
   patcoefs <- data.frame(pat = 1:npats, b = sumTemp[6+1:npats], c = sumTemp[6+npats+1:npats])
   rm(sumTemp)
   # add individual sample estimates
-  sampdf <- data.frame(pat = rep(factor(data$patient),2), patg = rep(factor(1:nsamp),2), tInd = c(rep(0,nsamp),rep(1,nsamp)), est = c(sampcoefs$b+mu, (sampcoefs$b+sampcoefs$c++sampcoefs$d+mu+betaT)))
+  sampdf <- data.frame(pat = rep(factor(data$patient),2), patg = rep(factor(1:nsamp),2), tInd = c(rep(0,nsamp),rep(1,nsamp)), est = c(sampcoefs$b+mu, (sampcoefs$b+sampcoefs$c++sampcoefs$d+mu+nu)))
   p1 <- p1 + geom_line(data=sampdf, aes(x=tInd, y=est, colour=pat, group=patg), linetype="dashed", alpha=0.5)
   # add patient mean estimates
-  patdf <- data.frame(pat = rep(levels(data$patient),2), tInd = c(rep(0,npats),rep(1,npats)), est = c(patcoefs$b+mu, patcoefs$b+patcoefs$c+mu+betaT))
+  patdf <- data.frame(pat = rep(levels(data$patient),2), tInd = c(rep(0,npats),rep(1,npats)), est = c(patcoefs$b+mu, patcoefs$b+patcoefs$c+mu+nu))
   p1 <- p1 + geom_line(data=patdf, aes(x=tInd, y=est, colour=pat))
   # add overall mean estimates as black dots
   meandf <- data.frame(tInd = c(0,1), est = c(mu,mu+nu))
@@ -186,7 +186,7 @@ emptyFit <- stan(file="model_TCGApriors.stan", data = stanDat1, chains = 0)
 # gc()
 
 # run in serial
-# want to collect data of random effect coefficients (bcd), fixed effects (betaT,mu), and sigmas
+# want to collect data of random effect coefficients (bcd), fixed effects (nu,mu), and sigmas
 # going to make it run the site and present the data within the same for loop, for data efficiency
 ptm <- proc.time()
 for(i in 1:nsites) {
@@ -205,9 +205,9 @@ for(i in 1:nsites) {
   fitSumm <- rbind(fitSumm,CpGscore)
   
   # print summary of parameters (mu, nu, sigmas, lp) for this site
-  print(summary(stanFit)$summary[c(1:6,dim(summary(stanFit)$summary)[1]),c(1, 2, 6, 9, 10)])
+  print(fitSumm)
   
-  # plot beta and fits at this site for all patients, using mean estimates for b and c coefficients
+  # plot M and fits at this site for all patients, using mean estimates for b and c coefficients
   p1 <- fitplot(data, stanFit)
 
   # plot posteriors for this site
