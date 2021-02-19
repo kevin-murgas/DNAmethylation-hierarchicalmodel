@@ -259,12 +259,17 @@ p_scores <- post_histogram(CpGscore_full$median,genemask,0.2,"CpG Conservation s
   scale_x_continuous(limits=c(-8,8),breaks=c(-8,-4,0,4,8)) + 
   scale_y_continuous(breaks=c(0,0.1,0.2,0.3,0.4,0.5))
 print(p_scores)
+
+df = data.frame(med=CpGscore_full$median, mask=genemask)
+p_scores <- ggplot(data=df) + geom_boxplot(aes(x=med, y = genemask, fill = genemask), outlier.shape = NA) +
+  scale_x_continuous(limits=c(-8,8),breaks=c(-8,-4,0,4,8)) + xlab("CpG score") + ylab("Gene-associated") + theme_classic() + theme(aspect.ratio=1/4,legend.position = "none")
+print(p_scores)
 # ggsave("CpGscores_overlay.svg")
 
 # Fig 4B: plot gene scores and adjusted bootstrap distribution
 p1 <- permed_data %>% ggplot(aes(x=score_median)) + geom_histogram(aes(y=..count..), binwidth=0.1, fill="lightgray",color = "grey50") + xlim(c(-3,7)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
 p2 <- permed_data %>% ggplot(aes(x=score_median_v3)) + geom_histogram(aes(y=..count..), binwidth=0.02, fill="lightgray", color="grey50") + xlim(c(0,1)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
-p_genes <- ggarrange(p1,p2,nrows=2,ncol=1)
+p_genes <- ggarrange(p1,p2,nrows=1,ncol=2)
 # ggsave("gene_scores_bootstrap.svg")
 ```
 
@@ -316,10 +321,13 @@ prepped_data %>% select(Name, Relation_to_UCSC_CpG_Island, score_median) %>%
                         str_detect(ir, "^S") ~ str_replace(ir, "^S_", ""),
                         str_detect(ir, "^N") ~ str_replace(ir, "^N_", ""),
                         TRUE ~ ir)) %>%
-  mutate(ir = factor(ir, levels = c("Island", "Shore", "Shelf", "Sea"))) %>%
-  #mutate(ir = factor(ir, levels = c("Sea", "Shelf", "Shore", "Island"))) %>%
-  ggplot() + geom_violin(aes(x=ir,y=score,fill=ir),draw_quantiles = 0.5) + theme_classic() + scale_y_continuous(limits=c(-5,5),breaks=c(-4,-2,0,2,4)) + theme(aspect.ratio=1/4,legend.position = "none")
+  #mutate(ir = factor(ir, levels = c("Island", "Shore", "Shelf", "Sea"))) %>%
+  #ggplot() + geom_violin(aes(x=ir,y=score,fill=ir),draw_quantiles = 0.5) + theme_classic() + 
+  mutate(ir = factor(ir, levels = c("Sea", "Shelf", "Shore", "Island"))) %>%
+  ggplot() + geom_boxplot(aes(y=ir,x=score, fill=ir), outlier.shape = NA) + theme_classic() +
+  scale_x_continuous(limits=c(-5,5),breaks=c(-4,-2,0,2,4)) + theme(aspect.ratio=1/4,legend.position = "none")
 # ggsave("CpGscore_islands_violin.svg")
+ggsave("CpGscore_islands_boxplot.svg")
 ```
 
 \subsection{Functional Regions (Fig 3C)}
@@ -378,14 +386,17 @@ temp <- prepped_data %>% select(Name, UCSC_RefGene_Group, score_median) %>%
                         str_detect(fr, "3UTR") ~ "3'UTR",
                         TRUE ~ fr)) %>%
   distinct()
-#keepregions = c("TSS1500","Body", "3'UTR","1stExon","TSS200","5'UTR","ExonBnd")
-keepregions = c("TSS200","1stExon", "5'UTR","TSS1500","Body","3'UTR","ExonBnd")
+#regions = c("TSS1500","Body", "3'UTR","1stExon","TSS200","5'UTR","ExonBnd")
+regions = rev(c("TSS200","1stExon", "5'UTR","TSS1500","Body","3'UTR","ExonBnd"))
 temp %>%
-  mutate(fr = factor(fr, levels = keepregions)) %>%
-  filter(fr %in% keepregions) %>%
-  ggplot() + geom_violin(aes(x=fr,y=score,fill=fr), draw_quantiles = 0.5) + theme_classic() + scale_y_continuous(limits=c(-5,5),breaks=c(-4,-2,0,2,4,6)) + theme(aspect.ratio=1/4,legend.position = "none") + geom_hline(yintercept = 0, color="black", alpha=0.2)
+  mutate(fr = factor(fr, levels = regions)) %>%
+  filter(fr %in% regions) %>%
+  #ggplot() + geom_violin(aes(x=fr,y=score,fill=fr), draw_quantiles = 0.5) + theme_classic() +
+  ggplot() + geom_boxplot(aes(y=fr,x=score, fill=fr), outlier.shape = NA) + theme_classic() +
+  scale_x_continuous(limits=c(-5,5),breaks=c(-4,-2,0,2,4)) + theme(aspect.ratio=1/4,legend.position = "none") + geom_vline(xintercept = 0, color="black", alpha=0.2)
 # ggsave("CpGscore_regions_violin.svg")
-#rm(temp)
+ggsave("CpGscore_regions_boxplot.svg")
+#rm(temp)3
 
 ```
 
@@ -497,14 +508,18 @@ genes_dbs <- rbind(perm_temp %>% mutate(group="all"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes1 %>% pull(`Gene Symbol`))) %>% mutate(group="COSMIC"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes2 %>% pull(CancerGenes))) %>% mutate(group="AGO")
               )
-# Fig 4B: plot violins
+# Fig 4C: plot distribution
 pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all", "AGO", "COSMIC"))) %>%
-  ggplot() + geom_violin(aes(x=score_median,y=group,fill=group), draw_quantiles = 0.5) + scale_x_continuous(limits=c(-2,4),breaks = c(-2,0,2,4)) + theme_classic() + ylab("Database") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none")
-# add hashmarks for each gene (doesn't look great)
-marks <- genes_dbs %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
-marks2 <- genes_dbs %>% filter(score_median_v3 > 0.95) %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
-pDB + geom_segment(data=marks2, aes(x=x, xend=x, y=y, yend=y+0.2), color="red") + geom_segment(data=marks, aes(x=x, xend=x, y=y, yend=y+0.1), color="black", alpha=0.5)
+  #ggplot() + geom_violin(aes(x=score_median,y=group,fill=group), draw_quantiles = 0.5) +
+  ggplot() + geom_boxplot(aes(x=score_median,y=group,fill=group), outlier.shape = NA) +
+  scale_x_continuous(limits=c(-2,4),breaks = c(-2,0,2,4)) + theme_classic() + ylab("Database") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none")
+# # add hashmarks for each gene (doesn't look great)
+# marks <- genes_dbs %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
+# marks2 <- genes_dbs %>% filter(score_median_v3 > 0.95) %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
+# pDB + geom_segment(data=marks2, aes(x=x, xend=x, y=y, yend=y+0.2), color="red") + geom_segment(data=marks, aes(x=x, xend=x, y=y, yend=y+0.1), color="black", alpha=0.5)
+pDB
 # ggsave("database_violins.svg")
+ggsave("database_boxplot.svg")
 
 # stats
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="COSMIC"], y = genes_dbs$score_median[genes_dbs$group=="all"], alternative = "greater")

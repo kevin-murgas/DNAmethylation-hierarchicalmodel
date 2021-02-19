@@ -323,3 +323,137 @@ p_all<- ggarrange(pM, pN, pE, pP, pPT, pT, pLP, pLPT, pLT, nrow=3, ncol=3)
 print(p_all)
 # ggsave("prior_sens_kdes.svg",p1)
 ```
+
+```{r posterior_sensitivity, echo=FALSE, comment=NA}
+
+n_eff_mat <- data.frame(Params=c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp"))
+Rhat_mat <- n_eff_mat
+KLdiv_mat <- n_eff_mat %>% slice(1:6)
+BCdist_mat <- KLdiv_mat
+EMdist_mat <- KLdiv_mat
+
+stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
+load(here(stanFile))
+
+mu_ref <- mu_full
+nu_ref <- nu_full
+sigmaP_ref <- sigmaP_full
+sigmaPT_ref <- sigmaPT_full
+sigmaT_ref <- sigmaT_full
+sigmaE_ref <- sigmaE_full
+
+for (i in c(1:4)) {
+  stanFile = switch(i,
+                    "FullResultsTCGA_gamma.Rdata",
+                    "FullResultsTCGA_relaxgamma2.Rdata",
+                    "FullResultsTCGA_relaxgamma3.Rdata",
+                    "FullResultsTCGA_relaxgamma5.Rdata")
+  print(stanFile)
+  load(here(stanFile))
+  print("loaded")
+  
+  n_eff_temp <-
+  data.frame(
+  mu = mu_full$n_eff,
+  nu = nu_full$n_eff,
+  sigmaP = sigmaP_full$n_eff,
+  sigmaPT = sigmaPT_full$n_eff,
+  sigmaT = sigmaT_full$n_eff,
+  sigmaE = sigmaE_full$n_eff,
+  lp = lp_full$n_eff
+  ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
+  mean = mean(value),
+  .groups = "drop"
+  ) %>% arrange(match(.$param,c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+  
+  Rhat_temp <-
+  data.frame(
+  mu = mu_full$Rhat,
+  nu = nu_full$Rhat,
+  sigmaP = sigmaP_full$Rhat,
+  sigmaPT = sigmaPT_full$Rhat,
+  sigmaT = sigmaT_full$Rhat,
+  sigmaE = sigmaE_full$Rhat,
+  lp = lp_full$Rhat
+  ) %>% gather(param,value,mu:lp) %>% group_by(param) %>% summarize(
+  mean = mean(value),
+  .groups = "drop"
+  ) %>% arrange(match(.$param,c("mu","nu","sigmaP","sigmaPT","sigmaT","sigmaE","lp")))
+  
+  # KL divergence
+  # formula: KL(P||Q) = sum(P(i) * log( P(i)/Q(i) )), where P(i),Q(i) = density
+  KL_temp <- numeric(6)
+  #Bhattacharya distance
+  # formula: BC = sum( sqrt(P(i)*Q(i)) )
+  BC_temp <- numeric(6)
+  # Earth-movers (Wasserstein) distance
+  EM_temp <- numeric(6)
+  
+  for (j in c(1:6)) {
+    # choose parameter (first get reference dist (3x), then prior relaxed dist)
+    breaks <- switch(j,
+                     seq(-5,5,0.1),
+                     seq(-6,6,0.12), #5.5,.11
+                     seq(0,3,0.03), #2.6
+                     seq(0,3,0.03),
+                     seq(0,3,0.03), #1.2
+                     seq(0,3,0.03)) #2.5
+    
+    refdata <- switch(j,
+                   mu_ref$p50,
+                   nu_ref$p50,
+                   sigmaP_ref$p50,
+                   sigmaPT_ref$p50,
+                   sigmaT_ref$p50,
+                   sigmaE_ref$p50)
+    Q <- hist(refdata, plot=FALSE, breaks=breaks) # run hist to get density and midpoints
+    x <- Q$mids
+    
+    data <- switch(j,
+                   mu_full$p50,
+                   nu_full$p50,
+                   sigmaP_full$p50,
+                   sigmaPT_full$p50,
+                   sigmaT_full$p50,
+                   sigmaE_full$p50)
+    P <- hist(data, plot=FALSE, breaks=breaks) # run hist to get density and midpoints
+    
+    Pi <- P$density[which(P$density>0 & Q$density>0)]
+    Qi <- Q$density[which(P$density>0 & Q$density>0)]
+    KL_temp[j] = sum(Pi * log(Pi/Qi))
+    
+    # BCD
+    dx <- x[2]-x[1]
+    BC_temp[j] = -log(sum(sqrt(P$density*Q$density)*dx))
+    
+    # EMD
+    A = cbind(P$density,P$mids)
+    B = cbind(Q$density,Q$mids)
+    EM_temp[j] = emd(A,B)
+    
+    # code below is for plotting data vs priors
+    #Q <- P
+    #Q$density <- priordens
+    #Q$counts <- Q$density*866091*(Q$breaks[2]-Q$breaks[1])
+    #c1 <- rgb(173,216,230,max = 255, alpha = 80, names = "lt.blue")
+    #c2 <- rgb(255,192,203, max = 255, alpha = 80, names = "lt.pink")
+    #plot(P,col=c1, main=paste("i=",i,", j=",j))
+    #plot(Q,col=c2,add=TRUE)
+  }
+  
+  varname = switch(i, "1x", "2x", "3x", "5x")
+  n_eff_mat <- n_eff_mat %>% mutate(!!varname := n_eff_temp$mean)
+  Rhat_mat <- Rhat_mat %>% mutate(!!varname := Rhat_temp$mean)
+  KLdiv_mat <- KLdiv_mat %>% mutate(!!varname := KL_temp)
+  BCdist_mat <- BCdist_mat %>% mutate(!!varname := BC_temp)
+  EMdist_mat <- EMdist_mat %>% mutate(!!varname := EM_temp)
+  
+}
+
+print("N_eff")
+kable(n_eff_mat, digits=2)
+print("Rhat")
+kable(Rhat_mat, digits=3)
+print("KLdiv");kable(KLdiv_mat, digits=3);print("BCdist");kable(BCdist_mat, digits=3);print("EMdist"); kable(EMdist_mat, digits=3)
+
+```
