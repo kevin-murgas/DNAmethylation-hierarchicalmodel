@@ -4,6 +4,45 @@
 ### Overview
 This study takes DNA methylation data, in the form of Infinium EPIC (850K) methylation array processed beta-values, from a cohort of 21 colorectal tumor patients. The multiple-sampling procedure provides two tumor samples for each patient, and a matching normal sample in some patients. These data then serve as inputs to a hierarchical random-effects model, which is fit to the logit-transformed beta-values (M-values) at each CpG site independently, using a Bayesian MCMC algorithm (Stan), including TCGA-based weakly informative prior probabilities. The resulting model fits are analyzed to determine sites with decreased variance within the tumor level compared to the normal tissue variance (i.e. preferential conservation within tumor). Subsequent analyses include significance bootstrapping and pathway analysis on significantly conserved genes.
 
+
+### Tutorial for Analysis
+1. ** Download and prepare data **
+    * The data used in this study is available from NCBI GEO GSE166212 [link](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE166212)
+    * Utilizing the Normalized_Beta_values xlsx file (containing processed methylation beta values for the CpG sites in the EPIC array across all samples in our data) is recommended
+        * Alternatively, raw .IDAT data can be processed using minfi methods, see LoadDataAndQC.R script below. Note the data is saved as "myFA_bulkonly.Rdata" because the raw .IDAT files include some non-bulk tumor samples, and we only work with the bulk samples in our study.
+    * Load the data into Rstudio using the script "PrepareDataFromGEO.R"
+        * This script formats the columns of the Normalized_Beta_values file into a data.frame and saves as "myFA_bulkonly.Rdata" for model analysis
+2. ** (optional) Define priors in Stan model file **
+    * We provide a Stan model file containing TCGA-based weakly informative priors: model_TCGApriors.stan
+        * These priors were defined using an independent cohort from TCGA COAD project to empirically estimate distributions for each fixed effect parameter and random effect variance hyperparameter in the model. These estimates were then relaxed by maintaining the mode but increase the variance of each distribution, arriving at weakly-informative priors
+    * Priors can be manually modified by editing the Stan file under the model{} section
+3. ** Run Hierarchical Model Fit with Stan **
+    * Note: we recommend use of a high-performance compute cluster to analyze in batch jobs and using parallelization on multiple CPUs in order to process the data expediently. The scripts provided utilize this approach to split the 866,091 sites of the EPIC array into 87 chunks of 10,000 sites, each of which is processed in parallel. Using 24 cores per chunk, the entire dataset can be modeled in approximately 12-24 hours real time.
+        * The shell script jobTCGA.sh provides an example of bash code to submit batch jobs using SLURM job scheduling. Parameters such as the partition and number of cores can be adjusted, and alternative scheduling software such as SGE will require slightly modified syntax.
+    * Running the model fits on multiple sites is accomplished by the script StanCParallel.R, which takes an integer input to specify the chunk for which to offset and take 10,000 sites from the full data set to model.
+        * Note: the patient ID and normal/tumor tissue status of each sample is determined based on the column names, be sure to modify this if you are working with different data, in order to specify the patient and tissue labels to the Stan algorithm
+        * In addition to estimating the fixed effect parameters and variance hyperparameters of the model at each CpG site, a relative conservation score is computed using the posterior distributions of sigmaP and sigmaT
+        * After fitting each model, the code will save a file (StanCParResults_X.Rdata, with X being the chunk index) to a specified output folder. The results files contain model parameter estimates as well as convergence diagnostics.
+    * For the purposes of running the model on a small number of sites, this can be done on a local computer using the script GetPosteriorsSingleSites.R
+        * This allows for examining individual CpG site model fits, for example to assess fits compared to the data or convergence
+4. ** Combine Model Fit Results **
+    * After running the model fits in batches, the results for each chunk can be combined into a single results file using the loadSCRuns.R script
+        * This script simply takes each results file and concatenates into a single data frame and saves as "FullResultsTCGA.Rdata"
+        * Be sure to set the working directory in the first few lines of the script to the correct destination in your computer
+5. ** Analysis of Model Results **
+    * Given the results files, one can explore different aspects of the data. The scripts StanAnalysis.Rmd and Paper_Figures.Rmd are two examples of the analysis we apply in our study
+        * These analyses include:
+            * Examining the overall distribution of parameter and hyperparameter estimates, as well as convergence diagnostics (we implement a cutoff filter based on the Rhat parameter for each CpG site, where Rhat>1.1 would indicate a poor model convergence, which typically occurs in <1% of CpG sites in our data)
+            * Comparison of posterior estimates to the priors provided to the model
+            * Examining the distribution of the relative conservation score across all CpG sites, and grouping CpG sites by functional regions and CpG-island relationship
+            * Examining the spatial distribution of relative conservation score with respect to gene start site (defined by Ensembl, and correcting for gene direction)
+            * Calculation of gene conservation score (averaging all CpG sites in each gene) and bootstrapping to establishing signficance of conservation
+            * Examination of gene average conservation compared to known colorectal cancer gene lists
+    * Additional analysis was performed using the Reactome Pathway Analysis online tool [link](https://reactome.org/PathwayBrowser/#/TOOL=AT), inputting a list of significantly conserved genes
+        * Reactome utilizes a hypergeometric test to assess pathway over-representation in the list of genes
+    * We welcome other researchers to consider, suggest, and perform further analyses on the model fit data, which include fixed effect parameters that could be used for differential methylation analysis for example. Additionally we welcome using our analysis pipeline for new data sets and potentially modifying our hierarchical model to accomodate different data structures with different hierarchical levels.
+
+
 ### Code Files
 Listed based on relevant order of processing
 
