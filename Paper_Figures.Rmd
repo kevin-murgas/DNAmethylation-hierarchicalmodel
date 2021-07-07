@@ -312,6 +312,11 @@ p2 <- permed_data %>% ggplot(aes(x=score_median_v3)) + geom_histogram(aes(y=..co
 p_genes <- ggarrange(p1,p2,nrows=1,ncol=2)
 ggsave("gene_scores_median.svg", plot=p1)
 ggsave("gene_scores_bootstrap.svg", plot=p2)
+
+# save significant bootstrapped genes as csv
+sig_genes = permed_data %>% filter(score_median_v3>=0.95) %>% pull(UCSC_RefGene_Name)
+write_csv(data.frame(Gene = sig_genes), file = "sig_cons_genes.csv")
+# for Reactome pathway analysis at https://reactome.org/PathwayBrowser
 ```
 
 
