@@ -31,7 +31,7 @@ selectedCols <- c("character", rep("NULL", 10), "character", "integer", "NULL", 
 EPICchar <- read.csv("MethylationEPIC_v-1-0_B4.csv", skip=7) %>%
   select(IlmnID, CHR, MAPINFO, Strand, UCSC_RefGene_Name, UCSC_RefGene_Group, UCSC_CpG_Islands_Name, Relation_to_UCSC_CpG_Island, DMR)
 
-# left join EPICchar to SampleData
+# inner join EPICchar to SampleData
 FullAnnotation = inner_join(EPICchar, SampleData, by="IlmnID") %>% arrange(IlmnID)
 
 # save output file as "myFA_bulkonly.Rdata"

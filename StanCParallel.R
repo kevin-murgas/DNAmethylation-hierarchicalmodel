@@ -147,7 +147,7 @@ parData <- foreach(i = iter(1:nsites), .combine = 'comb', .multicombine = TRUE, 
   
   # compute posterior log-ratio: log2(sigmaP/sigmaT), take integral>0, mean, median
   posterior <- as.matrix(stanFit,pars=c("sigma_p","sigma_t"))
-  logPTratio <- log2(posterior[,1]/posterior[,2])
+  logPTratio <- log2(posterior[,1]/posterior[,2])*2 # multiply log-ratio by 2 to get sigmaP^2/sigmaT^2
   CpGscore <- c(mean(logPTratio > 0), mean(logPTratio), median(logPTratio))
   fitSumm <- rbind(fitSumm,CpGscore)
   

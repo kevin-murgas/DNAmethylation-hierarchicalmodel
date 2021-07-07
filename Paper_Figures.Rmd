@@ -37,18 +37,12 @@ load(here("myFA_bulkonly.Rdata"))
 
 stanFile = "FullResultsTCGA_relaxgamma3.Rdata"
 load(here(stanFile))
-CpGscore_full = CpGscore_full %>% mutate(mean = mean*2, median=median*2)
 
 prepdatafolder = "data_final_rg3"
 cat(sprintf("Load prepped data dir: %s (needs to be pre-processed in StanAnalysis.Rmd)...",prepdatafolder))
 gened_data <- read_csv(here(prepdatafolder, "gened_data.csv"), col_types = list("CHR" = col_character()))
 prepped_data <- read_csv(here(prepdatafolder, "prepped_data.csv"))
 permed_data <- read_csv(here(prepdatafolder, "permed_data.csv"))
-
-gened_data <- gened_data %>% mutate(score_median = score_median*2)
-prepped_data <- prepped_data %>% mutate(score_median = score_median*2)
-permed_data <- permed_data %>% mutate(score_median = score_median*2)
-
 ```
 
 \newpage
@@ -119,58 +113,11 @@ rm(pM,pN,pBlank,pP,pPT,pT,pE)
 ```
 
 
-\subsection{CpG Conservation score}
-We want to understand which sites of DNA methylation are fundamentally conserved within tumors, i.e. lower variation in methlyation within tumor (sigmaT) relative to the variation within normal healthy tissue (sigmaP). Therefore we choose the log-ratio (base 2) of sigmaP/sigmaT to represent a relative conservation score, which is positive when tumor variation is lower than normal variation. We take the median of the posterior distribution constructed from the two sigmaP,T posteriors for this score.
-
-$$\text{score}_\text{med} = \text{Median} (\text{log}_2\frac{\sigma_{P}}{\sigma_T}) $$
-
-
 \newpage
-\subsection{Figure 2A: Example site fit, 2B: Posteriors}
+\subsection{Figure 2A: Example site fit, 2B: Example site posteriors}
 ![Fit](/Users/kevinmurgas/Documents/Data+ project/Manuscript/Paper Figures (screenshots)/example_fit.png)
 \newline \newline
 ![Posteriors](/Users/kevinmurgas/Documents/Data+ project/Manuscript/Paper Figures (screenshots)/example_posteriors.png)
-
-\newpage
-\section{Model Fit Results}
-\subsection{Fig 3C: Parameter Distributions}
-Histograms are median values of posterior distribution
-```{r Params_site, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
-genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
-cat(sprintf("N sites: total=%i, gene-associated=%i, non-gene=%i  \n",length(genemask),sum(genemask),length(genemask)-sum(genemask)))
-
-fBG <- function(x, a, m1, s1, m2, s2) a*dnorm(x,m1,s1) + (1-a)*dnorm(x,m2,s2) # bimodal gaussian
-post_prior_histogram <- function(postvals,priorfun,bw,xl,titlestr) {
-  # histogram and prior curve overlaid
-  plot_df <- data.frame(val=postvals)
-  p1 <- ggplot(plot_df, aes(x=val)) +
-    geom_histogram(aes(y=..density..), binwidth=bw) +
-    stat_function(fun=function(x) bw*priorfun(x),geom="line",color="black") +
-    ggtitle(titlestr) + xlim(xl) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Freq.")
-  p1
-}
-
-# plot hierarchical model posterior medians for mu,nu,sigmaE,sigmaP,sigmaPT,sigmaT; with priors overlaid
-pM <- post_prior_histogram(mu_full$p50, function(x) 10*fBG(x,0.3557,-3.0675, 0.75214,1.1290, 1.39197), 0.1, c(-5,5), "Mu")
-pN <- post_prior_histogram(nu_full$p50, function(x) 15*dcauchy(x,-0.04051, 0.5799), 0.1, c(-5,5), "Nu")
-#pE <- post_prior_histogram(sigmaE_full$p50, function(x) 4*dgamma(x,2,2), 0.05, c(0,2), "SigmaE")
-#pP <- post_prior_histogram(sigmaP_full$p50^2, function(x) 2*dgamma(x, 2.7693, 7.0029), 0.05, c(0,2), "SigmaP")
-#pPT <- post_prior_histogram(sigmaPT_full$p50^2, function(x) 1.8*dgamma(x, 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT")
-#pT <- post_prior_histogram(sigmaT_full$p50^2, function(x) 1.2*dgamma(x, 3.3643, 10.430), 0.05, c(0,2), "SigmaT")
-pE <- post_prior_histogram(sigmaE_full$p50^2, function(x) 100*dgamma(sqrt(x),2,2), 0.05, c(0,2), "SigmaE^2")
-pP <- post_prior_histogram(sigmaP_full$p50^2, function(x) 250*dgamma(sqrt(x), 2.7693, 7.0029), 0.01, c(0,1), "SigmaP^2")
-pPT <- post_prior_histogram(sigmaPT_full$p50^2, function(x) 40*dgamma(sqrt(x), 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT^2")
-pT <- post_prior_histogram(sigmaT_full$p50^2, function(x) 220*dgamma(sqrt(x), 3.3643, 10.430), 0.01, c(0,1), "SigmaT^2")
-# log sigmas
-#pLP <- post_prior_histogram(log(sigmaP_full$p50), genemask, function(x) 0.52*dgamma(exp(x), 2.7693, 7.0029), 0.1, c(-5,5), "log(SigmaP)")
-#pLPT <- post_prior_histogram(log(sigmaPT_full$p50), genemask, function(x) 0.7*dgamma(exp(x), 2.1457, 2.4819), 0.1, c(-5,5), "log(SigmaPT)")
-#pLT <- post_prior_histogram(log(sigmaT_full$p50), genemask, function(x) 0.4*dgamma(exp(x), 3.3643, 10.430), 0.1, c(-5,5), "log(SigmaT)") + theme(legend.position = c(0.8, 0.6), legend.text=element_text(size=6), legend.title=element_text(size=6))
-
-# arrange each parameter as a subplot # ,labels=c("M","B","E","P","PT","T","lP","lPT","lT")
-p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,hjust=0,nrow=2,ncol=3)
-print(p_all)
-rm(pM,pN,pE,pP,pPT,pT)
-```
 
 \newpage
 \subsection{Summary of neff and Rhat for each parameter}
@@ -220,12 +167,101 @@ Rhat_mat <-
 
 kable(Rhat_mat, col.names=c("Parameter", "Mean Rhat", "Max Rhat", "# >1.1", "% >1.1", "# >1.01", "% >1.01"), digits = 2)
 cat("  \n")
-
-# indices to filter out sites Rhat>1,1
-QCinds <- lp_full$Rhat > 1.1
 ```
 
-For the remainder of these results, a filter is applied to remove all sites with Rhat > 1.1 in lp (log-posterior likelihood of entire site fit). Another filter is later applied to remove all genes with <5 CpG sites.
+\subsection{Filter CpG sites}
+A filter is applied to remove all sites with Rhat > 1.1 in lp (log-posterior likelihood of entire site fit), and CpG sites mapping to sex chromosomes X and Y are removed as well to eliminate sex-specific bias.
+
+Later, a gene filter is applied to remove all genes with <5 CpG sites.
+
+```{r filter_sites, echo=FALSE, warning=FALSE}
+# indices to filter out sites Rhat>1,1
+QCinds <- which(lp_full$Rhat > 1.1)
+# indices to filter out X and Y chromosome
+XYinds <- which(FullAnnotation$CHR %in% c("X","Y"))
+
+# remove the corresponding rows from the results dataframes
+FullAnnotation <- FullAnnotation[-union(QCinds,XYinds),]
+mu_full <- mu_full[-union(QCinds,XYinds),]
+nu_full <- nu_full[-union(QCinds,XYinds),]
+sigmaP_full <- sigmaP_full[-union(QCinds,XYinds),]
+sigmaPT_full <- sigmaPT_full[-union(QCinds,XYinds),]
+sigmaT_full <- sigmaT_full[-union(QCinds,XYinds),]
+sigmaE_full <- sigmaE_full[-union(QCinds,XYinds),]
+lp_full <- lp_full[-union(QCinds,XYinds),]
+CpGscore_full <- CpGscore_full[-union(QCinds,XYinds),]
+```
+
+\subsection{Figure 2C: Posterior medians over all CpG sites}
+```{r posteriors, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
+# for each parameter, plot the distribution and overlay the fits
+fBG <- function(x, a, m1, s1, m2, s2) a*dnorm(x,m1,s1) + (1-a)*dnorm(x,m2,s2) # bimodal gaussian
+post_prior_histogram <- function(postvals,priorfun,bw,xl,titlestr) {
+  # histogram with prior curve overlaid
+  plot_df <- data.frame(val=postvals)
+  p1 <- ggplot(plot_df, aes(x=val)) +
+    geom_histogram(aes(y=..density..), binwidth=bw, position="dodge", fill="lightgray") +
+    stat_function(fun=function(x) priorfun(x), geom="line", color="black") +
+    ggtitle(titlestr) + xlim(xl) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Freq.")
+  p1
+}
+
+# plot mu,nu,sigmaE,sigmaP,sigmaPT,sigmaT with priors overlaid
+pM <- post_prior_histogram(mu_full$p50, function(x) 1.3*fBG(x,0.3557,-3.0675, 1.3027, 1.1290, 2.4110), 0.25, c(-5,5), "Mu") + theme(aspect.ratio = 1)
+pN <- post_prior_histogram(nu_full$p50, function(x) 1.5*dcauchy(x,-0.04051, 0.5799), 0.25, c(-5,5), "Nu") + theme(aspect.ratio = 1)
+pE <- post_prior_histogram(sigmaE_full$p50, function(x) 3.3*dgamma(x,2,2), 0.05, c(0,2), "SigmaE") + theme(aspect.ratio = 1)
+pP <- post_prior_histogram(sigmaP_full$p50, function(x) 1.52*dgamma(x, 2.7693, 7.0029), 0.05, c(0,2), "SigmaP") + theme(aspect.ratio = 1)
+pPT <- post_prior_histogram(sigmaPT_full$p50, function(x) 1.6*dgamma(x, 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT") + theme(aspect.ratio = 1)
+pT <- post_prior_histogram(sigmaT_full$p50, function(x) 0.97*dgamma(x, 3.3643, 10.430), 0.05, c(0,2), "SigmaT") + theme(aspect.ratio = 1)
+
+p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,hjust=0,nrow=2,ncol=3)
+print(p_all)
+rm(pM,pN,pE,pP,pPT,pT)
+
+ggsave(filename = "posteriors.svg", plot=p_all)
+```
+
+\newpage
+\section{Model Fit Results}
+\subsection{Fig 3C: Parameter Distributions}
+Histograms are median values of posterior distribution
+```{r Params_site, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
+genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
+cat(sprintf("N sites: total=%i, gene-associated=%i, non-gene=%i  \n",length(genemask),sum(genemask),length(genemask)-sum(genemask)))
+
+fBG <- function(x, a, m1, s1, m2, s2) a*dnorm(x,m1,s1) + (1-a)*dnorm(x,m2,s2) # bimodal gaussian
+post_prior_histogram <- function(postvals,priorfun,bw,xl,titlestr) {
+  # histogram and prior curve overlaid
+  plot_df <- data.frame(val=postvals)
+  p1 <- ggplot(plot_df, aes(x=val)) +
+    geom_histogram(aes(y=..density..), binwidth=bw) +
+    stat_function(fun=function(x) bw*priorfun(x),geom="line",color="black") +
+    ggtitle(titlestr) + xlim(xl) + theme_classic() + theme(legend.position = "none") + xlab(titlestr) + ylab("Freq.")
+  p1
+}
+
+# plot hierarchical model posterior medians for mu,nu,sigmaE,sigmaP,sigmaPT,sigmaT; with priors overlaid
+pM <- post_prior_histogram(mu_full$p50, function(x) 10*fBG(x,0.3557,-3.0675, 0.75214,1.1290, 1.39197), 0.1, c(-5,5), "Mu")
+pN <- post_prior_histogram(nu_full$p50, function(x) 15*dcauchy(x,-0.04051, 0.5799), 0.1, c(-5,5), "Nu")
+#pE <- post_prior_histogram(sigmaE_full$p50, function(x) 4*dgamma(x,2,2), 0.05, c(0,2), "SigmaE")
+#pP <- post_prior_histogram(sigmaP_full$p50^2, function(x) 2*dgamma(x, 2.7693, 7.0029), 0.05, c(0,2), "SigmaP")
+#pPT <- post_prior_histogram(sigmaPT_full$p50^2, function(x) 1.8*dgamma(x, 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT")
+#pT <- post_prior_histogram(sigmaT_full$p50^2, function(x) 1.2*dgamma(x, 3.3643, 10.430), 0.05, c(0,2), "SigmaT")
+pE <- post_prior_histogram(sigmaE_full$p50^2, function(x) 100*dgamma(sqrt(x),2,2), 0.05, c(0,2), "SigmaE^2")
+pP <- post_prior_histogram(sigmaP_full$p50^2, function(x) 250*dgamma(sqrt(x), 2.7693, 7.0029), 0.01, c(0,1), "SigmaP^2")
+pPT <- post_prior_histogram(sigmaPT_full$p50^2, function(x) 40*dgamma(sqrt(x), 2.1457, 2.4819), 0.05, c(0,2), "SigmaPT^2")
+pT <- post_prior_histogram(sigmaT_full$p50^2, function(x) 220*dgamma(sqrt(x), 3.3643, 10.430), 0.01, c(0,1), "SigmaT^2")
+
+# arrange each parameter as a subplot # ,labels=c("M","B","E","P","PT","T","lP","lPT","lT")
+p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,hjust=0,nrow=2,ncol=3)
+print(p_all)
+rm(pM,pN,pE,pP,pPT,pT)
+```
+
+\subsection{CpG Conservation score}
+We want to understand which sites of DNA methylation are fundamentally conserved within tumors, i.e. lower variation in methlyation within tumor (sigmaT) relative to the variation within normal healthy tissue (sigmaP). Therefore we choose the log-ratio (base 2) of sigmaP/sigmaT to represent a relative conservation score, which is positive when tumor variation is lower than normal variation. We take the median of the posterior distribution constructed from the two sigmaP,T posteriors for this score.
+
+$$\text{score}_\text{med} = \text{Median} (\text{log}_2\frac{\sigma_P^2}{\sigma_T^2}) $$
 
 \subsection{Fig 3A: Conservation score}
 ```{r Fig3A, echo=FALSE, fig.height=2, fig.width=6.5, fig.fullwidth=TRUE, warning=FALSE}
@@ -240,37 +276,42 @@ post_histogram <- function(postvals,mask,bw,titlestr) {
 }
 
 # overlaid transparent histograms
-post_histogram <- function(postvals,mask,bw,titlestr) {
-  # transparent histogram colored by gene-associated sites
-  plot_df <- data.frame(val=postvals, gene_assoc=mask)
-  gene_assoc_df <- plot_df %>% filter(gene_assoc)
-  not_gene_assoc_df <- plot_df %>% filter(!gene_assoc)
-  p1 <- ggplot(plot_df, aes(x=val)) +
-    geom_histogram(data=not_gene_assoc_df, aes(y=..density..,fill="#00BFC4",alpha=0.4), binwidth=bw) +
-    geom_histogram(data=gene_assoc_df, aes(y=..density..,fill="#F8766D",alpha=0.4), binwidth=bw) +
-    ggtitle(titlestr) + xlab(titlestr) + ylab("Density") + theme_classic() 
-  p1
-}
+# post_histogram <- function(postvals,mask,bw,titlestr) {
+#   # transparent histogram colored by gene-associated sites
+#   plot_df <- data.frame(val=postvals, gene_assoc=mask)
+#   gene_assoc_df <- plot_df %>% filter(gene_assoc)
+#   not_gene_assoc_df <- plot_df %>% filter(!gene_assoc)
+#   p1 <- ggplot(plot_df, aes(x=val)) +
+#     geom_histogram(data=not_gene_assoc_df, aes(y=..density..,fill="#00BFC4",alpha=0.4), binwidth=bw) +
+#     geom_histogram(data=gene_assoc_df, aes(y=..density..,fill="#F8766D",alpha=0.4), binwidth=bw) +
+#     ggtitle(titlestr) + xlab(titlestr) + ylab("Density") + theme_classic() 
+#   p1
+# }
 
-# plot the two conservations score prob sums
+# plot conservation score
 genemask = !(FullAnnotation$UCSC_RefGene_Name=="")
 p_scores <- post_histogram(CpGscore_full$median,genemask,0.2,"CpG Conservation score") +
   theme(aspect.ratio=1/4,legend.position = "none") +
   scale_x_continuous(limits=c(-8,8),breaks=c(-8,-4,0,4,8)) + 
   scale_y_continuous(breaks=c(0,0.1,0.2,0.3,0.4,0.5))
 print(p_scores)
+ggsave("CpGscores_dodge.svg")
 
+# same data but as boxplot
 df = data.frame(med=CpGscore_full$median, mask=genemask)
 p_scores <- ggplot(data=df) + geom_boxplot(aes(x=med, y = genemask, fill = genemask), outlier.shape = NA) +
   scale_x_continuous(limits=c(-8,8),breaks=c(-8,-4,0,4,8)) + xlab("CpG score") + ylab("Gene-associated") + theme_classic() + theme(aspect.ratio=1/4,legend.position = "none")
 print(p_scores)
-# ggsave("CpGscores_overlay.svg")
+
+# statistics: two-sample wilcoxon rank-sum
+wilcox.test(x=CpGscore_full$median[genemask], y=CpGscore_full$median[!genemask], alternative = "greater")
 
 # Fig 4B: plot gene scores and adjusted bootstrap distribution
-p1 <- permed_data %>% ggplot(aes(x=score_median)) + geom_histogram(aes(y=..count..), binwidth=0.1, fill="lightgray",color = "grey50") + xlim(c(-3,7)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
+p1 <- permed_data %>% ggplot(aes(x=score_median)) + geom_histogram(aes(y=..count..), binwidth=0.2, fill="lightgray",color = "grey50") + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1) + scale_x_continuous(breaks = c(-2,0,2,4,6), limits = c(-3,7)) + scale_y_continuous(breaks = c(0,1000,2000,3000), limits = c(0,3000))
 p2 <- permed_data %>% ggplot(aes(x=score_median_v3)) + geom_histogram(aes(y=..count..), binwidth=0.02, fill="lightgray", color="grey50") + xlim(c(0,1)) + theme_classic() + ylab("Number of genes") + theme(aspect.ratio = 1)
 p_genes <- ggarrange(p1,p2,nrows=1,ncol=2)
-# ggsave("gene_scores_bootstrap.svg")
+ggsave("gene_scores_median.svg", plot=p1)
+ggsave("gene_scores_bootstrap.svg", plot=p2)
 ```
 
 
@@ -396,7 +437,7 @@ temp %>%
   scale_x_continuous(limits=c(-5,5),breaks=c(-4,-2,0,2,4)) + theme(aspect.ratio=1/4,legend.position = "none") + geom_vline(xintercept = 0, color="black", alpha=0.2)
 # ggsave("CpGscore_regions_violin.svg")
 ggsave("CpGscore_regions_boxplot.svg")
-#rm(temp)3
+#rm(temp)
 
 ```
 
@@ -442,7 +483,7 @@ distance_length %>% drop_na() %>%
   xlab("Distance from gene start site (binned to 100 bp)") + ylab("Average Conservation Score") +
   scale_x_continuous(breaks = seq(-1500,10000,1500))
 cat("\n")
-# ggsave("CpGdist.svg")
+ggsave("CpGdist.svg")
 ```
 
 \newpage
@@ -473,6 +514,12 @@ plotGeneScore("TTN",0.26)
 cat("\n")
 plotGeneScore("HLA-A",0.18)
 #ggsave("genescore_HLA-A.svg")
+cat("\n")
+plotGeneScore("APC",0.12) + theme(aspect.ratio = 1)
+#ggsave("genescore_APC.svg")
+cat("\n")
+plotGeneScore("KRAS",0.18) + theme(aspect.ratio = 1)
+#ggsave("genescore_KRAS.svg")
 
 # stats for each gene
 # do one sample wilcoxon rank sum
@@ -497,34 +544,97 @@ gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^HLA-A$"))) %>% pull(
 cancergenes1 <- read_csv("/Users/kevinmurgas/Documents/Data+ project/Cancer gene lists/SangerCensus_COSMIC_CRC.csv")
 # CRC gene database 2: AGO
 cancergenes2 <- read_csv("/Users/kevinmurgas/Documents/Data+ project/Cancer gene lists/CRCgenes_atlasgeneticsoncology.csv")
+essentialgenes <- read_delim("/Users/kevinmurgas/Documents/Data+ project/Manuscript/Bioinformatics Revision/core-essential-genes-sym_HGNCID.txt", delim = "\t", col_names = F)
 
 # compute % overlap of database genes and significant genes (By adj bootstrap)
 # n1 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes1 %>% pull(`Gene Symbol`)))
 # n2 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes2 %>% pull(CancerGenes)))
 
 # plot violins of: all genes, COSMIC, AGO
-perm_temp <- permed_data %>% select(c(UCSC_RefGene_Name, score_median,score_median_v3,n))
-genes_dbs <- rbind(perm_temp %>% mutate(group="all"),
+perm_temp <- permed_data %>% select(c(UCSC_RefGene_Name, score_median,score_median_v3,n)) %>% mutate(score_median = 2*score_median)
+genes_dbs <- rbind(perm_temp %>% mutate(group="all genes"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes1 %>% pull(`Gene Symbol`))) %>% mutate(group="COSMIC"),
-              perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes2 %>% pull(CancerGenes))) %>% mutate(group="AGO")
+              perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes2 %>% pull(CancerGenes))) %>% mutate(group="AGO"),
+              perm_temp %>% filter(UCSC_RefGene_Name %in% (essentialgenes %>% pull(X1))) %>% mutate(group="DEPMAP")
               )
 # Fig 4C: plot distribution
-pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all", "AGO", "COSMIC"))) %>%
+pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all genes", "AGO", "COSMIC", "DEPMAP"))) %>%
   #ggplot() + geom_violin(aes(x=score_median,y=group,fill=group), draw_quantiles = 0.5) +
   ggplot() + geom_boxplot(aes(x=score_median,y=group,fill=group), outlier.shape = NA) +
-  scale_x_continuous(limits=c(-2,4),breaks = c(-2,0,2,4)) + theme_classic() + ylab("Database") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none")
+  scale_x_continuous(limits=c(-5,7), breaks = c(-4, -2,0, 2, 4, 6)) + theme_classic() + ylab("Database") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none")
 # # add hashmarks for each gene (doesn't look great)
 # marks <- genes_dbs %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
 # marks2 <- genes_dbs %>% filter(score_median_v3 > 0.95) %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
 # pDB + geom_segment(data=marks2, aes(x=x, xend=x, y=y, yend=y+0.2), color="red") + geom_segment(data=marks, aes(x=x, xend=x, y=y, yend=y+0.1), color="black", alpha=0.5)
 pDB
 # ggsave("database_violins.svg")
-ggsave("database_boxplot.svg")
+ggsave("database_boxplot_depmap.svg")
+
+genes_dbs %>% group_by(group) %>% summarize(mean = mean(score_median))
 
 # stats
-wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="COSMIC"], y = genes_dbs$score_median[genes_dbs$group=="all"], alternative = "greater")
-wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="AGO"], y = genes_dbs$score_median[genes_dbs$group=="all"], alternative = "greater")
+wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="COSMIC"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
+wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="AGO"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
+wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="DEPMAP"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
 ```
+
+\newpage
+\subsection{Oncogenes vs Tumor suppressors}
+Based on list of top 20 genes mutated in CRC, manually labelled as oncogene or tumor-suppressor:
+
+| Oncogene | Tumor Suppressor |
+|----------|------------------|
+| KRAS     | TP53             |
+| MYC      | APC              |
+| BRAF     | KLF4             |
+| EGFR     | FBXW7            |
+| CDK8     | LRP1B            |
+| PIK3CA   | PTEN             |
+| NRAS     | FAT4             |
+| GNAS     | ARID1A           |
+| SRC      | AMER1            |
+| CTNNB1   | SMAD4            |
+
+```{r Onco_vs_TSG, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=2, comment=NA, fig.fullwidth=TRUE, dev = "png"}
+
+plotGeneScore <- function(geneStr,norm) {
+  cat("\n")
+  CpGscores <- gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^",geneStr,"$"))) %>% pull(score_median)
+  ggplot(prepped_data) + geom_histogram(aes(x=score_median, y=..count../nrow(prepped_data)), binwidth=0.05,fill="lightgray") + ggtitle(sprintf("%s: CpG scores (%i sites)",geneStr, length(CpGscores))) +
+    scale_x_continuous(limits=c(-5,5), breaks=c(-4,-2,0,2,4)) +
+    scale_y_continuous(limits=c(0,0.03),breaks=c(0,0.01,0.02,0.03)) +
+    xlab("CpG conservation score") + ylab("Freq.") + theme_classic() + theme(legend.position = "none") +
+    #geom_vline(xintercept=CpGscores, color="red", alpha=0.5, size=0.2) +
+    geom_histogram(data=data.frame(score=CpGscores),aes(x=score,y=norm*..count../length(CpGscores)),binwidth=0.05, fill="blue",alpha=0.5) +
+    geom_vline(xintercept=mean(CpGscores), color="blue",linetype="dashed", size=1)
+}
+
+cat("\nOncogenes:")
+plotGeneScore("KRAS",0.25)
+plotGeneScore("MYC",0.21)
+plotGeneScore("BRAF",0.5)
+plotGeneScore("EGFR",0.5)
+plotGeneScore("CDK8",0.5)
+plotGeneScore("PIK3CA",0.5)
+plotGeneScore("NRAS",0.5)
+plotGeneScore("GNAS",0.5)
+plotGeneScore("SRC",0.5)
+plotGeneScore("CTNNB1",0.5)
+
+cat("\nTumor Suppressors:")
+plotGeneScore("TP53",0.25)
+plotGeneScore("APC",0.21)
+plotGeneScore("KLF4",0.5)
+plotGeneScore("FBXW7",0.5)
+plotGeneScore("LRP1B",0.5)
+plotGeneScore("PTEN",0.5)
+plotGeneScore("FAT4",0.5)
+plotGeneScore("ARID1A",0.5)
+plotGeneScore("AMER1",0.5)
+plotGeneScore("SMAD4",0.5)
+
+```
+
 
 ```{r Exit, include=FALSE}
 knit_exit()
@@ -598,3 +708,5 @@ p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,pP1,hjust=0,nrow=3,ncol=3)
 print(p_all)
 rm(pM,pN,pE,pP,pPT,pT,pP1)
 ```
+
+
