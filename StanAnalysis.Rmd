@@ -175,7 +175,12 @@ cat("  \n")
 ```
 
 \subsection{Filter CpG sites}
-A filter is applied to remove all sites with Rhat > 1.1 in lp (log-posterior likelihood of entire site fit), and CpG sites mapping to sex chromosomes X and Y are removed as well to eliminate sex-specific bias.
+Three filters are applied to remove CpG sites from subsequent analysis:
+1. Sites with poor model convergence: Rhat > 1.1 in lp (log-posterior likelihood of entire site fit),
+2. Sites mapping to sex chromosomes X and Y,
+3. Sites with likely SNPs (determined via MethylToSNP algorithm from LaBarre 2019, *Epigenetics & Chromatin*)
+
+8740, 19632, and 377 sites were identified in each respective filter, for total union of 28557 CpG sites to remove (out of 866091 total CpG sites)
 
 Later, a gene filter is applied to remove all genes with <5 CpG sites.
 
@@ -185,16 +190,37 @@ QCinds <- which(lp_full$Rhat > 1.1)
 # indices to filter out X and Y chromosome
 XYinds <- which(FullAnnotation$CHR %in% c("X","Y"))
 
+# detect likely SNPs with MethylToSNP package
+# from paper: LaBarre et al. 2019, Epigenetics & Chromatin)
+if ( file.exists(here("methyltosnp_results.csv")) ) {
+  # if file already exists then load it
+  snps <- read.csv(here("methyltosnp_results.csv"))
+  rownames(snps) <- snps[,1]
+  snps<-snps[,-1]
+} else {
+  # otherwise, run the MethylToSNP algorithm and save
+  library(MethylToSNP)
+  library(minfiDataEPIC)
+  data(SNPs.147CommonSingle)
+  data_beta = FullAnnotation[,10:57]
+  rownames(data_beta) <- FullAnnotation$IlmnID
+  snps <- MethylToSNP(data_beta, SNP=SNPs.147CommonSingle) %>% filter(confidence>0.5) # use suggested cutoff of 0.5
+  write.csv(snps, file = here("methyltosnp_results.csv"))
+}
+SNPinds <- which(FullAnnotation$IlmnID %in% rownames(snps))
+
+remove_inds = union(QCinds, union(XYinds, SNPinds))
+
 # remove the corresponding rows from the results dataframes
-FullAnnotation <- FullAnnotation[-union(QCinds,XYinds),]
-mu_full <- mu_full[-union(QCinds,XYinds),]
-nu_full <- nu_full[-union(QCinds,XYinds),]
-sigmaP_full <- sigmaP_full[-union(QCinds,XYinds),]
-sigmaPT_full <- sigmaPT_full[-union(QCinds,XYinds),]
-sigmaT_full <- sigmaT_full[-union(QCinds,XYinds),]
-sigmaE_full <- sigmaE_full[-union(QCinds,XYinds),]
-lp_full <- lp_full[-union(QCinds,XYinds),]
-CpGscore_full <- CpGscore_full[-union(QCinds,XYinds),]
+FullAnnotation <- FullAnnotation[-remove_inds,]
+mu_full <- mu_full[-remove_inds,]
+nu_full <- nu_full[-remove_inds,]
+sigmaP_full <- sigmaP_full[-remove_inds,]
+sigmaPT_full <- sigmaPT_full[-remove_inds,]
+sigmaT_full <- sigmaT_full[-remove_inds,]
+sigmaE_full <- sigmaE_full[-remove_inds,]
+lp_full <- lp_full[-remove_inds,]
+CpGscore_full <- CpGscore_full[-remove_inds,]
 ```
 
 \newpage Prep data

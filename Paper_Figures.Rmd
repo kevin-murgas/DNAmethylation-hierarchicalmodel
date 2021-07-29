@@ -180,16 +180,26 @@ QCinds <- which(lp_full$Rhat > 1.1)
 # indices to filter out X and Y chromosome
 XYinds <- which(FullAnnotation$CHR %in% c("X","Y"))
 
+# use MethylToSNP package to detect likely SNPs
+# from paper: LaBarre et al. 2019, Epigenetics & Chromatin)
+# methyltosnp_results file should exist from running StanAnalysis.Rmd
+snps <- read.csv(here("methyltosnp_results.csv"))
+rownames(snps) <- snps[,1]
+snps<-snps[,-1]
+SNPinds <- which(FullAnnotation$IlmnID %in% rownames(snps))
+
+remove_inds = union(QCinds, union(XYinds, SNPinds))
+
 # remove the corresponding rows from the results dataframes
-FullAnnotation <- FullAnnotation[-union(QCinds,XYinds),]
-mu_full <- mu_full[-union(QCinds,XYinds),]
-nu_full <- nu_full[-union(QCinds,XYinds),]
-sigmaP_full <- sigmaP_full[-union(QCinds,XYinds),]
-sigmaPT_full <- sigmaPT_full[-union(QCinds,XYinds),]
-sigmaT_full <- sigmaT_full[-union(QCinds,XYinds),]
-sigmaE_full <- sigmaE_full[-union(QCinds,XYinds),]
-lp_full <- lp_full[-union(QCinds,XYinds),]
-CpGscore_full <- CpGscore_full[-union(QCinds,XYinds),]
+FullAnnotation <- FullAnnotation[-remove_inds,]
+mu_full <- mu_full[-remove_inds,]
+nu_full <- nu_full[-remove_inds,]
+sigmaP_full <- sigmaP_full[-remove_inds,]
+sigmaPT_full <- sigmaPT_full[-remove_inds,]
+sigmaT_full <- sigmaT_full[-remove_inds,]
+sigmaE_full <- sigmaE_full[-remove_inds,]
+lp_full <- lp_full[-remove_inds,]
+CpGscore_full <- CpGscore_full[-remove_inds,]
 ```
 
 \subsection{Figure 2C: Posterior medians over all CpG sites}
@@ -551,6 +561,12 @@ cancergenes1 <- read_csv("/Users/kevinmurgas/Documents/Data+ project/Cancer gene
 cancergenes2 <- read_csv("/Users/kevinmurgas/Documents/Data+ project/Cancer gene lists/CRCgenes_atlasgeneticsoncology.csv")
 essentialgenes <- read_delim("/Users/kevinmurgas/Documents/Data+ project/Manuscript/Bioinformatics Revision/core-essential-genes-sym_HGNCID.txt", delim = "\t", col_names = F)
 
+# additional non-relevant gene sets from MSigDB (LEIN_NEURON, CARDIAC_PROGENITOR)
+# MSigDB: C2: LEIN_NEURON_MARKERS
+neuron <- read_delim("/Users/kevinmurgas/Documents/Data+ project/geneset_neuron.gmt", delim="\t") %>% colnames()
+# MSigDB: C2: WP_CARDIAC_PROGENITOR_DIFFERENTIATION
+cardprog <- read_delim("/Users/kevinmurgas/Documents/Data+ project/geneset_cardprog.gmt", delim="\t") %>% colnames()
+
 # compute % overlap of database genes and significant genes (By adj bootstrap)
 # n1 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes1 %>% pull(`Gene Symbol`)))
 # n2 = sum(permed_data %>% filter(score_median_v3>0.95) %>% pull(UCSC_RefGene_Name) %in% (cancergenes2 %>% pull(CancerGenes)))
@@ -560,10 +576,12 @@ perm_temp <- permed_data %>% select(c(UCSC_RefGene_Name, score_median,score_medi
 genes_dbs <- rbind(perm_temp %>% mutate(group="all genes"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes1 %>% pull(`Gene Symbol`))) %>% mutate(group="COSMIC"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes2 %>% pull(CancerGenes))) %>% mutate(group="AGO"),
-              perm_temp %>% filter(UCSC_RefGene_Name %in% (essentialgenes %>% pull(X1))) %>% mutate(group="DEPMAP")
+              perm_temp %>% filter(UCSC_RefGene_Name %in% (essentialgenes %>% pull(X1))) %>% mutate(group="DEPMAP"),
+              perm_temp %>% filter(UCSC_RefGene_Name %in% neuron) %>% mutate(group="neuron"),
+              perm_temp %>% filter(UCSC_RefGene_Name %in% cardprog) %>% mutate(group="cardprog")
               )
 # Fig 4C: plot distribution
-pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all genes", "AGO", "COSMIC", "DEPMAP"))) %>%
+pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all genes", "AGO", "COSMIC", "DEPMAP", "neuron", "cardprog"))) %>%
   #ggplot() + geom_violin(aes(x=score_median,y=group,fill=group), draw_quantiles = 0.5) +
   ggplot() + geom_boxplot(aes(x=score_median,y=group,fill=group), outlier.shape = NA) +
   scale_x_continuous(limits=c(-5,7), breaks = c(-4, -2,0, 2, 4, 6)) + theme_classic() + ylab("Database") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none")
@@ -581,65 +599,9 @@ genes_dbs %>% group_by(group) %>% summarize(mean = mean(score_median))
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="COSMIC"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="AGO"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="DEPMAP"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
+wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="neuron"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
+wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="cardprog"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
 ```
-
-\newpage
-\subsection{Oncogenes vs Tumor suppressors}
-Based on list of top 20 genes mutated in CRC, manually labelled as oncogene or tumor-suppressor:
-
-| Oncogene | Tumor Suppressor |
-|----------|------------------|
-| KRAS     | TP53             |
-| MYC      | APC              |
-| BRAF     | KLF4             |
-| EGFR     | FBXW7            |
-| CDK8     | LRP1B            |
-| PIK3CA   | PTEN             |
-| NRAS     | FAT4             |
-| GNAS     | ARID1A           |
-| SRC      | AMER1            |
-| CTNNB1   | SMAD4            |
-
-```{r Onco_vs_TSG, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=2, comment=NA, fig.fullwidth=TRUE, dev = "png"}
-
-plotGeneScore <- function(geneStr,norm) {
-  cat("\n")
-  CpGscores <- gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^",geneStr,"$"))) %>% pull(score_median)
-  ggplot(prepped_data) + geom_histogram(aes(x=score_median, y=..count../nrow(prepped_data)), binwidth=0.05,fill="lightgray") + ggtitle(sprintf("%s: CpG scores (%i sites)",geneStr, length(CpGscores))) +
-    scale_x_continuous(limits=c(-5,5), breaks=c(-4,-2,0,2,4)) +
-    scale_y_continuous(limits=c(0,0.03),breaks=c(0,0.01,0.02,0.03)) +
-    xlab("CpG conservation score") + ylab("Freq.") + theme_classic() + theme(legend.position = "none") +
-    #geom_vline(xintercept=CpGscores, color="red", alpha=0.5, size=0.2) +
-    geom_histogram(data=data.frame(score=CpGscores),aes(x=score,y=norm*..count../length(CpGscores)),binwidth=0.05, fill="blue",alpha=0.5) +
-    geom_vline(xintercept=mean(CpGscores), color="blue",linetype="dashed", size=1)
-}
-
-cat("\nOncogenes:")
-plotGeneScore("KRAS",0.25)
-plotGeneScore("MYC",0.21)
-plotGeneScore("BRAF",0.5)
-plotGeneScore("EGFR",0.5)
-plotGeneScore("CDK8",0.5)
-plotGeneScore("PIK3CA",0.5)
-plotGeneScore("NRAS",0.5)
-plotGeneScore("GNAS",0.5)
-plotGeneScore("SRC",0.5)
-plotGeneScore("CTNNB1",0.5)
-
-cat("\nTumor Suppressors:")
-plotGeneScore("TP53",0.25)
-plotGeneScore("APC",0.21)
-plotGeneScore("KLF4",0.5)
-plotGeneScore("FBXW7",0.5)
-plotGeneScore("LRP1B",0.5)
-plotGeneScore("PTEN",0.5)
-plotGeneScore("FAT4",0.5)
-plotGeneScore("ARID1A",0.5)
-plotGeneScore("AMER1",0.5)
-plotGeneScore("SMAD4",0.5)
-
-```
-
 
 ```{r Exit, include=FALSE}
 knit_exit()
