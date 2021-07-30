@@ -609,8 +609,8 @@ genes_dbs %>% group_by(group) %>% summarize(mean = mean(score_median))
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="COSMIC"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="AGO"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="DEPMAP"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
-wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="cardiac"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
-wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="neuron"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
+wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="cardiac"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "less")
+wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="neuron"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "less")
 ```
 
 
