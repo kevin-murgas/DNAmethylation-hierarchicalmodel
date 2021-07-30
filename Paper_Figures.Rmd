@@ -552,7 +552,17 @@ gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^HLA-A$"))) %>%
 gened_data %>% filter(str_detect(UCSC_RefGene_Name,paste0("^HLA-A$"))) %>% pull(score_median) %>% wilcox.test(mu = 0, alternative = "two.sided")
 ```
 
-\subsection{CRC Cancer Genes Databases}
+\subsection{Fig 4B: Gene-average Conservation Score}
+Examine the distribution of gene-average conservation scores, as well as the distribution of adjusted-boostrap p-values.
+```{r Gene_Score, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
+
+permed_data %>% ggplot() + geom_histogram(aes(x=score_median, y=..density..), binwidth=0.2, color="gray",fill="lightgray") + theme_classic()
+
+permed_data %>% ggplot() + geom_histogram(aes(x=score_median_v3, y=..count..), binwidth=0.02, color="gray",fill="lightgray") + theme_classic() + geom_vline(aes(xintercept = 0.95), color="red", linetype="dashed")
+```
+
+\subsection{Fig 4C: CRC Cancer Genes Databases}
+Including sets of genes implicated in CRC, based on common mutations from COSMIC database and Atlas of Genetics in Oncology (AGO), as well as a cancer essential gene list based on experimental CRISPRi knockout library. We also compared two gene sets from MSigDB which should be irrelevant to cancer, a set of cardiac progenitor differentiation genes (MSigDB: C2: WP_CARDIAC_PROGENITOR_DIFFERENTIATION) and a set of neuron marker genes (MSigDB: C2: LEIN_NEURON_MARKERS).
 ```{r cancergenes, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=2, comment=NA}
 
 # CRC gene database 1: COSMIC
@@ -578,13 +588,13 @@ genes_dbs <- rbind(perm_temp %>% mutate(group="all genes"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (cancergenes2 %>% pull(CancerGenes))) %>% mutate(group="AGO"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% (essentialgenes %>% pull(X1))) %>% mutate(group="DEPMAP"),
               perm_temp %>% filter(UCSC_RefGene_Name %in% neuron) %>% mutate(group="neuron"),
-              perm_temp %>% filter(UCSC_RefGene_Name %in% cardprog) %>% mutate(group="cardprog")
+              perm_temp %>% filter(UCSC_RefGene_Name %in% cardprog) %>% mutate(group="cardiac")
               )
 # Fig 4C: plot distribution
-pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all genes", "AGO", "COSMIC", "DEPMAP", "neuron", "cardprog"))) %>%
+pDB <- genes_dbs %>% mutate(group = factor(group, levels = c("all genes", "neuron", "cardiac", "AGO", "COSMIC", "DEPMAP"))) %>%
   #ggplot() + geom_violin(aes(x=score_median,y=group,fill=group), draw_quantiles = 0.5) +
   ggplot() + geom_boxplot(aes(x=score_median,y=group,fill=group), outlier.shape = NA) +
-  scale_x_continuous(limits=c(-5,7), breaks = c(-4, -2,0, 2, 4, 6)) + theme_classic() + ylab("Database") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none")
+  scale_x_continuous(limits=c(-5,7), breaks = c(-4, -2,0, 2, 4, 6)) + theme_classic() + ylab("Gene set") + xlab("Gene Conservation Score") + geom_vline(xintercept=0, color="black", alpha=0.2) + theme(aspect.ratio=60/156.3,legend.position = "none") + scale_fill_manual(values=c("gray","red", "red", "deepskyblue", "deepskyblue", "deepskyblue"))
 # # add hashmarks for each gene (doesn't look great)
 # marks <- genes_dbs %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
 # marks2 <- genes_dbs %>% filter(score_median_v3 > 0.95) %>% mutate(x=score_median, y=if_else(group=="COSMIC",3,if_else(group=="AGO",2,1))) %>% select(x,y)
@@ -603,77 +613,7 @@ wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="neuron"], y = genes_dbs
 wilcox.test(x = genes_dbs$score_median[genes_dbs$group=="cardprog"], y = genes_dbs$score_median[genes_dbs$group=="all genes"], alternative = "greater")
 ```
 
+
 ```{r Exit, include=FALSE}
 knit_exit()
 ```
-
-
-\newpage
-\subsection{Gene-average Parameter Distributions}
-```{r Params_gene, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA}
-# make gene-wise averages
-gene_summarize <- function(data, id, value, fun = mean, ...) {
-  grouped_data <- data %>% group_by({{id}})
-  
-  bind_cols(
-    summarise_at(grouped_data, dplyr::vars({{value}}), fun, ...),
-    count(grouped_data) %>% dplyr::ungroup() %>% dplyr::select(.data$n)
-  )
-}
-
-cat("Summarize by gene, taking mean value of all sites in gene")
-ptm<-proc.time()
-gene_summary <- gened_data %>%
-  filter(!is.na(UCSC_RefGene_Name)) %>%
-  gene_summarize(UCSC_RefGene_Name, c(mu:sigmaT,score_median))
-cat(proc.time()-ptm)
-
-post_histogram <- function(postvals,bw,xl,titlestr) {
-  # stacked histogram colored by gene averages
-  # and prior curve overlaid
-  plot_df <- data.frame(val=postvals)
-  p1 <- ggplot(plot_df, aes(x=val)) +
-    geom_histogram(aes(y=..density..), binwidth=bw) +
-    ggtitle(titlestr) + xlim(xl) + theme_classic() + xlab(titlestr) + ylab("Freq.")
-  p1
-}
-
-# plot: n_sites, mu, nu, sigmaP, sigmaPT, sigmaT
-n_cutlo = 5
-n_cuthi = quantile(gene_summary$n, 0.99)
-pNS <- post_histogram(gene_summary$n,1,c(0,200),paste0("N sites (max = ",max(gene_summary$n),")")) + geom_vline(xintercept=n_cutlo-0.5,linetype = "dashed",color="red") + annotate(geom="text",x=80,y=0.03,size=2,label=paste0("# genes <",n_cutlo," sites:\n", sum(gene_summary$n<n_cutlo)," / ",nrow(gene_summary))) +
-geom_vline(xintercept=n_cuthi,linetype = "dashed",color="red") +annotate(geom="text",x=120,y=0.013,size=2,label=sprintf("# genes >%0.1f sites:\n %i / %i (99th pctile)", n_cuthi,sum(gene_summary$n>n_cuthi),nrow(gene_summary)))
-gene_summary <- gene_summary %>% filter(n>=n_cutlo) %>% filter(n<n_cuthi)
-pM <- post_histogram(gene_summary$mu,0.1,c(-5,5),"Mu")
-pN <- post_histogram(gene_summary$nu,0.1,c(-5,5),"Nu")
-pP <- post_histogram(gene_summary$sigmaP,0.05,c(0,2),"SigmaP")
-pPT <- post_histogram(gene_summary$sigmaPT,0.05,c(0,2),"SigmaPT")
-pT <- post_histogram(gene_summary$sigmaT,0.05,c(0,2),"SigmaT")
-pP1 <- post_histogram(gene_summary$score_median,0.05,c(-3,3),"Score_median")
-# arrange each parameter as a subplot
-p_all <- ggarrange(pNS,pM,pN,pP,pPT,pT,pP1,hjust=0,nrow=3,ncol=3)
-print(p_all)
-rm(pNS,pM,pN,pP,pPT,pT,pP1)
-
-```
-
-\newpage
-\subsection{Gene-average parameters vs N sites}
-```{r Params_vsN, echo=FALSE, fig.fullwidth=TRUE, warning=FALSE, comment=NA, dev = "png"}
-pM <- ggplot(gene_summary) + geom_point(aes(x=n,y=mu), alpha=0.01) + ggtitle("Mu vs N-sites")
-pN <- ggplot(gene_summary) + geom_point(aes(x=n,y=nu), alpha=0.01) + ggtitle("Nu vs N-sites")
-pE <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaE), alpha=0.01) + ggtitle("SigmaE vs N-sites")
-pP <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaP), alpha=0.01) + ggtitle("SigmaP vs N-sites")
-pPT <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaPT), alpha=0.01) + ggtitle("SigmaPT vs N-sites")
-pT <- ggplot(gene_summary) + geom_point(aes(x=n,y=sigmaT), alpha=0.01) + ggtitle("SigmaT vs N-sites")
-
-
-pP1 <- ggplot(gene_summary) + geom_point(aes(x=n,y=score_median), alpha=0.01) + ggtitle("Score_median vs N-sites")
-
-# arrange each parameter as a subplot
-p_all <- ggarrange(pM,pN,pE,pP,pPT,pT,pP1,hjust=0,nrow=3,ncol=3)
-print(p_all)
-rm(pM,pN,pE,pP,pPT,pT,pP1)
-```
-
-
