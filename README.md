@@ -1,5 +1,5 @@
 # DNAmethylation
-## Code repository for Murgas et al. 2021, "A Bayesian Hierarchical Model for DNA Methylation in Colorectal Cancer" (in preparation)
+## Code repository for Murgas et al. 2021, "A Bayesian Hierarchical Model to Estimate DNA Methylation Conservation in Colorectal Tumors." Bioinformatics. PMID: 34487148
 
 ### Overview
 This study takes DNA methylation data, in the form of Infinium EPIC (850K) methylation array processed beta-values, from a cohort of 21 colorectal tumor patients. The multiple-sampling procedure provides two tumor samples for each patient, and a matching normal sample in some patients. These data then serve as inputs to a hierarchical random-effects model, which is fit to the logit-transformed beta-values (M-values) at each CpG site independently, using a Bayesian MCMC algorithm (Stan), including TCGA-based weakly informative prior probabilities. The resulting model fits are analyzed to determine sites with decreased variance within the tumor level compared to the normal tissue variance (i.e. preferential conservation within tumor). Subsequent analyses include significance bootstrapping and pathway analysis on significantly conserved genes.
